@@ -5,6 +5,9 @@
  * (that was FUNCTION_INVOCATION_FAILED in production). So the sources live in
  * server/functions/ and this step emits api/swarm/*.js with every relative module inlined.
  * Packages stay external: Vercel traces node_modules for a .js entry on its own.
+ *
+ * The output is committed, not ignored: a Git-connected Vercel project validates the
+ * `functions` glob in vercel.json before `npm run build` has produced anything.
  */
 import { build } from 'esbuild';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
