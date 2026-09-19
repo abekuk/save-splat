@@ -147,38 +147,48 @@ export default function ViewerApp({
   }, [viewer, load]);
 
   /* ---- geometry ---- */
-  const runGeometry = useCallback(() => {
-    const v = viewer;
-    if (!v) return;
-    const input = v.getExtractInput();
-    if (!input) {
-      setStatus(`slot ${v.getActiveSlot()} is empty — load a scan before extracting geometry`);
-      return;
-    }
-    if (getState().geoStage === 'ransac' || getState().geoStage === 'prep') return;
-    setState({ geoStage: 'prep', geoProgress: null, selectedPlane: -1, tab: 'geo' });
-    v.setGeom(null);
-    extractGeometry(
-      input,
-      (planes, stage, frac) =>
-        setState({ geoStage: 'ransac', geoProgress: { planes, stage, frac } }),
-      (g) => {
-        v.setGeom(g);
-        setState({ geoStage: 'done', geoProgress: null });
-        const walls = g.planes.filter((p) => p.cls === 'wall');
-        const worst = walls.reduce((m, p) => Math.max(m, p.drift ?? 0), 0);
-        setStatus(
-          `${g.planes.length} planes in ${g.ms} ms · ${walls.length} wall${walls.length === 1 ? '' : 's'}` +
-            (walls.length ? ` · worst drift ${(worst * 100).toFixed(1)}%` : ''),
-        );
-      },
-      (err) => {
-        console.error(err);
-        setState({ geoStage: 'failed', geoProgress: null });
-        setStatus(`geometry failed: ${err.message}`);
-      },
-    );
-  }, [viewer]);
+  /** `focus` switches to the GEO tab. The swarm runs extraction as a step of its own
+   *  capture, and stealing the tab mid-flow would hide the result it is about to show. */
+  const runGeometry = useCallback(
+    (focus = true) => {
+      const v = viewer;
+      if (!v) return;
+      const input = v.getExtractInput();
+      if (!input) {
+        setStatus(`slot ${v.getActiveSlot()} is empty — load a scan before extracting geometry`);
+        return;
+      }
+      if (getState().geoStage === 'ransac' || getState().geoStage === 'prep') return;
+      setState({
+        geoStage: 'prep',
+        geoProgress: null,
+        selectedPlane: -1,
+        ...(focus ? { tab: 'geo' as const } : {}),
+      });
+      v.setGeom(null);
+      extractGeometry(
+        input,
+        (planes, stage, frac) =>
+          setState({ geoStage: 'ransac', geoProgress: { planes, stage, frac } }),
+        (g) => {
+          v.setGeom(g);
+          setState({ geoStage: 'done', geoProgress: null });
+          const walls = g.planes.filter((p) => p.cls === 'wall');
+          const worst = walls.reduce((m, p) => Math.max(m, p.drift ?? 0), 0);
+          setStatus(
+            `${g.planes.length} planes in ${g.ms} ms · ${walls.length} wall${walls.length === 1 ? '' : 's'}` +
+              (walls.length ? ` · worst drift ${(worst * 100).toFixed(1)}%` : ''),
+          );
+        },
+        (err) => {
+          console.error(err);
+          setState({ geoStage: 'failed', geoProgress: null });
+          setStatus(`geometry failed: ${err.message}`);
+        },
+      );
+    },
+    [viewer],
+  );
 
   /* ---- keyboard ---- */
   useEffect(() => {

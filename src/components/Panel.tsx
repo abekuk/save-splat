@@ -22,7 +22,7 @@ export default function Panel({
   onGeometry,
 }: {
   viewer: Viewer | null;
-  onGeometry: () => void;
+  onGeometry: (focus?: boolean) => void;
 }) {
   const s = useAppState();
   const snap = useSnapshot(viewer);
@@ -60,7 +60,7 @@ export default function Panel({
           <GeoTab viewer={viewer} snap={snap} onGeometry={onGeometry} />
         </div>
         <div className={s.tab === 'swarm' ? 'pane on' : 'pane'} id="pane-swarm">
-          <SwarmTab viewer={viewer} snap={snap} />
+          <SwarmTab viewer={viewer} snap={snap} onGeometry={onGeometry} />
         </div>
         <div className={s.tab === 'model' ? 'pane on' : 'pane'} id="pane-model">
           <ModelTab />
