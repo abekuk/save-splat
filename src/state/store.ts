@@ -12,7 +12,7 @@ import type { SwarmRunResult } from '@/core/swarm/proposal';
 import type { RoomRunResult } from '@/core/swarm/client';
 import type { GeoStage, Site, Vec3 } from '@/types';
 
-export type TabKey = 'queue' | 'assess' | 'geo' | 'swarm' | 'model';
+export type TabKey = 'assess' | 'geo' | 'swarm' | 'model';
 
 export interface AppState {
   sites: Site[];
@@ -56,7 +56,7 @@ let state: AppState = {
   sites: [],
   selectedId: null,
   selectedPlane: -1,
-  tab: 'queue',
+  tab: 'swarm',
   status: 'ready — LOAD .PLY (or drop one here), or click SYNTHETIC SCENE',
   hint: '',
   metresPerUnit: 1,

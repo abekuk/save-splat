@@ -2,7 +2,6 @@ import type { Viewer } from '@/scene/viewer';
 import { exportCsv, exportJson } from '@/core/export';
 import { setState, setStatus, useAppState } from '@/state/store';
 import type { TabKey } from '@/state/store';
-import QueueTab from './tabs/QueueTab';
 import AssessTab from './tabs/AssessTab';
 import GeoTab from './tabs/GeoTab';
 import SwarmTab from './tabs/SwarmTab';
@@ -10,7 +9,6 @@ import ModelTab from './tabs/ModelTab';
 import { useSnapshot } from '@/state/useSnapshot';
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: 'queue', label: 'QUEUE' },
   { key: 'assess', label: 'ASSESS' },
   { key: 'geo', label: 'GEO' },
   { key: 'swarm', label: 'SWARM' },
@@ -29,7 +27,7 @@ export default function Panel({
 
   const guardEmpty = (): boolean => {
     if (!s.sites.length) {
-      window.alert('The dispatch queue is empty — place at least one site before exporting.');
+      window.alert('Nothing to export yet — place at least one marked site first.');
       return false;
     }
     return true;
@@ -50,9 +48,6 @@ export default function Panel({
       </div>
 
       <div id="panes">
-        <div className={s.tab === 'queue' ? 'pane on' : 'pane'} id="pane-queue">
-          <QueueTab viewer={viewer} />
-        </div>
         <div className={s.tab === 'assess' ? 'pane on' : 'pane'} id="pane-assess">
           <AssessTab viewer={viewer} snap={snap} />
         </div>
