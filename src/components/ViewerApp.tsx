@@ -3,7 +3,9 @@ import { createViewer } from '@/scene/viewer';
 import type { Viewer } from '@/scene/viewer';
 import { extractGeometry } from '@/core/geometry/extract';
 import { ranked } from '@/core/ranking';
-import { loadPlyFile } from '@/core/ply/load';
+import { loadPlyFile, readAll } from '@/core/ply/load';
+import { isMeshFile, parseGlb } from '@/core/mesh/glb';
+import { afterPaint, fmtBytes } from '@/core/util';
 import { makeSynthetic } from '@/core/synthetic';
 import {
   addSite,
@@ -88,6 +90,56 @@ export default function ViewerApp({
         loadFile: `${file.name}`,
         loading: { phase: 'reading', frac: 0, message: 'opening …' },
       });
+
+      const fail = (msg: string, err?: unknown): void => {
+        if (err) console.error(err);
+        setState({ loading: null });
+        setStatus(`load failed: ${msg}`);
+        window.alert(
+          `Could not load "${file.name}".\n\n${msg}\n\n` +
+            'savesplat reads .ply point clouds and gaussian splats (Scaniverse, Polycam), and ' +
+            '.glb / .gltf textured meshes.',
+        );
+      };
+
+      // A glTF mesh takes a different path: no sampling, no covariance, and the geometry
+      // pass runs on its vertices instead of a point cloud.
+      if (isMeshFile(file.name)) {
+        void (async () => {
+          let buf: ArrayBuffer;
+          try {
+            buf = await readAll(file, (frac) =>
+              setState({
+                loading: {
+                  phase: 'reading',
+                  frac: frac * 0.9,
+                  message: `${fmtBytes(file.size)} · ${Math.round(frac * 100)}%`,
+                },
+              }),
+            );
+          } catch (err) {
+            fail(err instanceof Error ? err.message : 'the read failed', err);
+            return;
+          }
+          setState({ loading: { phase: 'parsing', frac: 0.93, message: 'decoding mesh …' } });
+          await new Promise<void>((r) => afterPaint(r));
+          try {
+            const res = await parseGlb(buf);
+            setState({ loading: { phase: 'building', frac: 1, message: 'building the scene …' } });
+            await new Promise<void>((r) => afterPaint(r));
+            v.installMesh(res.root, res.positions, file.name, null, {
+              vertices: res.vertices,
+              meshes: res.meshes,
+              textured: res.textured,
+            });
+            setState({ loading: null, selectedPlane: -1 });
+          } catch (err) {
+            fail(err instanceof Error ? err.message : 'could not decode this glTF', err);
+          }
+        })();
+        return;
+      }
+
       void loadPlyFile(file, {
         onProgress: (p) => setState({ loading: p }),
         onDone: (res) => {
@@ -101,16 +153,7 @@ export default function ViewerApp({
           }
           setState({ loading: null, selectedPlane: -1 });
         },
-        onFail: (msg, err) => {
-          if (err) console.error(err);
-          setState({ loading: null });
-          setStatus(`load failed: ${msg}`);
-          window.alert(
-            `Could not load "${file.name}".\n\n${msg}\n\n` +
-              'Rubble reads point/splat .ply files (Scaniverse, Polycam, gaussian-splat exports). ' +
-              'A mesh-only .ply with no vertex coordinates, or a file that is not a .ply at all, will fail here.',
-          );
-        },
+        onFail: fail,
         confirmLarge: (msg) => window.confirm(msg),
         onCancel: () => {
           setState({ loading: null });

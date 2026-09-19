@@ -67,6 +67,7 @@ async function main(): Promise<void> {
     sites: [site],
     slotKey: 'A',
     slot: {
+      kind: 'points',
       name: 'synthetic rubble field',
       kept: 140000,
       total: 140000,

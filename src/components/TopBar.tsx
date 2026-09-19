@@ -61,7 +61,7 @@ export default function TopBar({
       <input
         ref={fileRef}
         type="file"
-        accept=".ply,application/octet-stream"
+        accept=".ply,.glb,.gltf,application/octet-stream"
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0];

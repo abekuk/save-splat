@@ -132,6 +132,8 @@ export interface Orientation {
 }
 
 export interface Slot {
+  /** a sampled point cloud, or a glTF mesh */
+  kind: 'points' | 'mesh';
   name: string;
   kept: number;
   total: number;

@@ -27,7 +27,15 @@ export interface ViewerCallbacks {
 }
 
 interface SlotInternal {
-  obj: THREE.Points;
+  /** THREE.Points for a cloud, a glTF scene graph for a mesh */
+  obj: THREE.Object3D;
+  kind: 'points' | 'mesh';
+  /** every vertex, flattened xyz, in the object's local space. The geometry pass reads
+   *  this rather than reaching into a geometry attribute, so a mesh and a cloud are
+   *  interchangeable to it. */
+  positions: Float32Array;
+  /** local-space bounding centre, so framing does not depend on the object's shape */
+  center: THREE.Vector3;
   name: string;
   kept: number;
   total: number;
@@ -209,8 +217,19 @@ export function createViewer(
 
   /* ---------------- marker placement ---------------- */
 
-  function visibleClouds(): THREE.Points[] {
-    const out: THREE.Points[] = [];
+  /** Dispose a whole subtree — a glTF scene is not one geometry and one material. */
+  function disposeObject(root: THREE.Object3D): void {
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material;
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else mat?.dispose();
+    });
+  }
+
+  function visibleClouds(): THREE.Object3D[] {
+    const out: THREE.Object3D[] = [];
     (Object.keys(slots) as SlotKey[]).forEach((k) => {
       const s = slots[k];
       if (s && s.obj.visible) out.push(s.obj);
@@ -383,6 +402,12 @@ export function createViewer(
           opacity: 0.07 + 0.2 * p.fill,
           side: THREE.DoubleSide,
           depthWrite: false,
+          // A fitted plane sits exactly on the surface it was fitted to. Against a point
+          // cloud that is invisible; against a mesh the two are coplanar and z-fight into
+          // a mottled mess, so nudge the overlay towards the camera.
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
         }),
       );
       mesh.renderOrder = 4;
@@ -482,12 +507,10 @@ export function createViewer(
   function frameSlot(key: SlotKey): void {
     const s = slots[key];
     if (!s) return;
-    const sph = s.obj.geometry.boundingSphere;
-    if (!sph) return;
-    const c = sph.center.clone();
+    const c = s.center.clone();
     s.obj.updateMatrixWorld();
     c.applyMatrix4(s.obj.matrixWorld);
-    const rad = isFinite(sph.radius) && sph.radius > 0 ? sph.radius : 10;
+    const rad = isFinite(s.radius) && s.radius > 0 ? s.radius : 10;
 
     orbit.target.copy(c);
     orbit.radius = clamp(rad * 2.2, 0.3, 600);
@@ -509,8 +532,7 @@ export function createViewer(
     const outgoing = slots[key];
     if (outgoing) {
       scene.remove(outgoing.obj);
-      outgoing.obj.geometry.dispose();
-      (outgoing.obj.material as THREE.Material).dispose();
+      disposeObject(outgoing.obj);
     }
 
     const geo = new THREE.BufferGeometry();
@@ -538,6 +560,9 @@ export function createViewer(
 
     slots[key] = {
       obj: pts,
+      kind: 'points',
+      positions: res.positions,
+      center: sph ? sph.center.clone() : new THREE.Vector3(),
       name,
       kept: res.kept,
       total: res.total,
@@ -561,6 +586,65 @@ export function createViewer(
             (det.confident
               ? ` (detected, floor holds ${Math.round(det.score * 100)}% of points)`
               : ' (UNCERTAIN — press f if this looks wrong)')
+          : ''),
+    );
+  }
+
+  /** Install a glTF scene graph. Mirrors installCloud: same slot rules, same orientation
+   *  detection (run on the mesh's own vertices), same framing. */
+  function installMesh(
+    root: THREE.Object3D,
+    positions: Float32Array,
+    name: string,
+    orient: number | null,
+    meta: { vertices: number; meshes: number; textured: boolean },
+  ): void {
+    const key = targetSlot();
+    const outgoing = slots[key];
+    if (outgoing) {
+      scene.remove(outgoing.obj);
+      disposeObject(outgoing.obj);
+    }
+
+    const box = new THREE.Box3().setFromObject(root);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const rad = isFinite(sphere.radius) && sphere.radius > 0 ? sphere.radius : 10;
+
+    let det: OrientationDetection | null = null;
+    let idx = orient;
+    if (idx == null) {
+      det = detectOrientation(positions);
+      idx = det.index;
+    }
+    root.rotation.x = ORIENTS[idx].rx;
+    scene.add(root);
+
+    slots[key] = {
+      obj: root,
+      kind: 'mesh',
+      positions,
+      center: sphere.center.clone(),
+      name,
+      kept: meta.vertices,
+      total: meta.vertices,
+      orient: idx,
+      auto: false,
+      detected: det,
+      alphas: null,
+      cov: null,
+      radius: rad,
+      geom: null,
+    };
+    activeSlot = key;
+    setActiveSlot(key);
+    frameSlot(key);
+
+    cb.onStatus(
+      `${name} → slot ${key} · mesh · ${fmtInt(meta.vertices)} vertices · ${meta.meshes} part` +
+        `${meta.meshes === 1 ? '' : 's'} · ${meta.textured ? 'textured' : 'untextured'}` +
+        (det
+          ? ` · up-axis ${ORIENTS[idx].name}` +
+            (det.confident ? '' : ' (UNCERTAIN — press f if this looks wrong)')
           : ''),
     );
   }
@@ -591,6 +675,7 @@ export function createViewer(
     const s = slots[k];
     if (!s) return null;
     return {
+      kind: s.kind,
       name: s.name,
       kept: s.kept,
       total: s.total,
@@ -608,7 +693,7 @@ export function createViewer(
     if (!s) return null;
     s.obj.updateMatrixWorld();
     return {
-      positions: s.obj.geometry.attributes.position.array as Float32Array,
+      positions: s.positions,
       alphas: s.alphas,
       cov: s.cov,
       matrixWorld: s.obj.matrixWorld.elements,
@@ -644,6 +729,7 @@ export function createViewer(
     resize,
     resetView,
     installCloud,
+    installMesh,
     setActiveSlot,
     frameSlot,
     cycleOrientation,
