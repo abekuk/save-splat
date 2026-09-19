@@ -1,15 +1,15 @@
 import { useEffect } from 'react';
 import type { AppSnapshot } from '@/core/snapshot';
+import type { Viewer } from '@/scene/viewer';
 import { SWARM_AGENTS, agentByKey, parseProposal } from '@/core/swarm/agents';
 import type { AgentParam, ProposalValue } from '@/core/swarm/agents';
 import { buildSwarmContext, copyText } from '@/core/swarm/context';
 import { runSwarmRemote, runVisionRemote, swarmStatus } from '@/core/swarm/client';
-import { buildVerdict } from '@/core/geometry/verdict';
-import type { Viewer } from '@/scene/viewer';
 import type { AgentResult, Verdict } from '@/core/swarm/proposal';
-import { LAMBDA, TYPE_LABEL, rho } from '@/core/ranking';
-import { mVol } from '@/core/units';
-import { fmtInt, fmtNum } from '@/core/util';
+import { buildJudgement } from '@/core/swarm/judgement';
+import { buildVerdict } from '@/core/geometry/verdict';
+import { LAMBDA, TYPE_LABEL } from '@/core/ranking';
+import { fmtInt } from '@/core/util';
 import { getState, setState, setStatus, updateSite, useAppState } from '@/state/store';
 import type { Site } from '@/types';
 
@@ -43,18 +43,29 @@ const VCLASS: Record<Verdict['status'], string> = {
   fail: 'vline fail',
   unverified: 'vline unver',
 };
+const LEVEL_WORD: Record<string, string> = {
+  failed: 'NO RESULT',
+  unrankable: 'INCOMPLETE',
+  flagged: 'CHECK THIS',
+  ranked: 'ASSESSED',
+};
+const TONE: Record<string, string> = {
+  ok: 'var(--dim)',
+  warn: 'var(--r2)',
+  bad: 'var(--r1)',
+  dim: 'var(--dim)',
+};
 
 export default function SwarmTab({ viewer, snap }: { viewer: Viewer | null; snap: AppSnapshot }) {
   const s = useAppState();
   const site = s.sites.find((x) => x.id === s.selectedId) ?? null;
   const ctx = buildSwarmContext(snap);
-  const chars = JSON.stringify(ctx).length;
   const { run, busy, notes, status, vision, visionBusy } = s.swarm;
 
-  const byKey = new Map<string, AgentResult>((run?.results ?? []).map((r) => [r.key, r]));
+  const geoLevel = snap.geom ? buildVerdict(snap.geom.planes).level : 'unknown';
+  const visionUse = vision?.report?.occupancy_indicators ?? [];
+  const judgement = run ? buildJudgement(run, site, geoLevel, visionUse) : null;
 
-  /* Ask once whether a reasoner is reachable, so the button can say why it is disabled
-     instead of failing on the first click. */
   useEffect(() => {
     if (s.swarm.status) return;
     void swarmStatus().then((st) => setState((x) => ({ swarm: { ...x.swarm, status: st } })));
@@ -90,21 +101,30 @@ export default function SwarmTab({ viewer, snap }: { viewer: Viewer | null; snap
     (window as unknown as { RubbleSwarm: typeof api }).RubbleSwarm = api;
   }, [snap]);
 
-  const apply = (key: string): void => {
-    const a = agentByKey(key);
-    const pr = s.proposals[key];
-    if (!a || !pr || !site) return;
-    const from = paramText(site, a.param);
-    updateSite(site.id, { [a.param]: pr.value } as Partial<Site>);
-    const to = proposalText(pr.value, a.param);
+  /* One action instead of five. Each value is still recorded against what it replaced —
+     the operator decides to take the swarm's reading, and that decision is on the record. */
+  const useThese = (): void => {
+    if (!site || !judgement?.applicable.length) return;
+    const patch: Partial<Site> = {};
+    const entries: { agent: string; label: string; from: string; to: string }[] = [];
+    for (const r of judgement.applicable) {
+      const a = agentByKey(r.key);
+      if (!a || r.value === null) continue;
+      entries.push({
+        agent: a.name,
+        label: a.label,
+        from: paramText(site, a.param),
+        to: proposalText(r.value as ProposalValue, a.param),
+      });
+      (patch as Record<string, unknown>)[a.param] = r.value;
+    }
+    updateSite(site.id, patch);
     setState((st) => ({
-      overrideLog: [...st.overrideLog, { at: new Date(), agent: a.name, label: a.label, from, to }],
+      overrideLog: [...st.overrideLog, ...entries.map((e) => ({ at: new Date(), ...e }))],
     }));
-    setStatus(`${a.name} proposal applied to ${site.name} — override logged`);
+    setStatus(`applied ${entries.length} of the swarm's values to ${site.name} — each one logged`);
   };
 
-  /* The vision agent sees the scan, so it needs pictures of it — taken here rather than
-     server-side, because the renderer with the scan in it lives in this tab's process. */
   const lookNow = (): void => {
     if (!viewer || visionBusy) return;
     setState((x) => ({ swarm: { ...x.swarm, visionBusy: true } }));
@@ -117,15 +137,14 @@ export default function SwarmTab({ viewer, snap }: { viewer: Viewer | null; snap
       setStatus(`could not capture views: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-    const level = snap.geom ? buildVerdict(snap.geom.planes).level : 'unknown';
     setStatus(`${images.length} views captured — asking the vision agent …`);
-    void runVisionRemote({ images, geometryLevel: level, sceneNote: notes || null })
+    void runVisionRemote({ images, geometryLevel: geoLevel, sceneNote: notes || null })
       .then((res) => {
         setState((x) => ({ swarm: { ...x.swarm, vision: res, visionBusy: false } }));
         setStatus(
           res.error
             ? `vision failed: ${res.error}`
-            : `vision done in ${(res.ms / 1000).toFixed(1)}s · ${res.verdicts.filter((v) => v.status === 'fail').length} check(s) failed`,
+            : `vision done in ${(res.ms / 1000).toFixed(1)}s`,
         );
       })
       .catch((e: unknown) => {
@@ -140,24 +159,8 @@ export default function SwarmTab({ viewer, snap }: { viewer: Viewer | null; snap
     setStatus('swarm running — five agents over the current evidence…');
     void runSwarmRemote({ context: ctx, operatorNotes: notes, siteId: site?.id ?? null })
       .then((res) => {
-        // Only non-abstained results become applyable proposals. A failed verifier still
-        // produces one, but the APPLY button stays locked and says why.
-        const proposals: Record<string, { value: ProposalValue; rationale: string; at: Date }> = {};
-        for (const r of res.results) {
-          if (r.abstained || r.value === null || r.error) continue;
-          proposals[r.key] = {
-            value: r.value as ProposalValue,
-            rationale: r.rationale,
-            at: new Date(res.generated),
-          };
-        }
-        setState((x) => ({ swarm: { ...x.swarm, run: res, busy: false }, proposals }));
-        const failed = res.results.filter((r) => !r.verified || r.error).length;
-        const abstained = res.results.filter((r) => r.abstained).length;
-        setStatus(
-          `swarm done in ${(res.totalMs / 1000).toFixed(1)}s · ${res.results.length} agents · ` +
-            `${abstained} abstained · ${failed} did not verify`,
-        );
+        setState((x) => ({ swarm: { ...x.swarm, run: res, busy: false } }));
+        setStatus(`swarm done in ${(res.totalMs / 1000).toFixed(1)}s`);
       })
       .catch((e: unknown) => {
         setState((x) => ({ swarm: { ...x.swarm, busy: false } }));
@@ -166,276 +169,216 @@ export default function SwarmTab({ viewer, snap }: { viewer: Viewer | null; snap
   };
 
   const noKey = status ? !status.configured : false;
-  const runLabel = busy ? 'RUNNING…' : 'RUN SWARM';
 
   return (
     <>
-      <div className="sctx">
-        <div>
-          SITE&nbsp;&nbsp;
-          {site ? (
-            <>
-              <b>{site.name}</b> · ρ {rho(site).toFixed(3)} · n {site.n} q {site.q.toFixed(2)} r{' '}
-              {site.r.toFixed(2)} τ {site.tau.toFixed(1)}
-            </>
-          ) : (
-            <>
-              <b>none selected</b> — agents have no site to reason about
-            </>
-          )}
+      {!site && (
+        <div className="gnote">
+          No site selected. Press <b>m</b> and click the scan to place one — the swarm reasons about
+          a site, not about the whole scan.
         </div>
-        <div>
-          SCAN&nbsp;&nbsp;
-          {snap.slot ? (
-            <>
-              <b>{snap.slot.name}</b> · {fmtInt(snap.slot.kept)} pts · covariance{' '}
-              {snap.slot.hasCov ? 'yes' : 'no'} · 1 unit = {snap.metresPerUnit} m
-            </>
-          ) : (
-            <>
-              <b>slot {snap.slotKey} empty</b>
-            </>
-          )}
-        </div>
-        <div>
-          GEO&nbsp;&nbsp;&nbsp;
-          {snap.geom ? (
-            <>
-              <b>{snap.geom.planes.length} planes</b> · debris{' '}
-              {fmtNum(mVol(snap.geom.debris.totalVolume, snap.metresPerUnit))} m³ · residual{' '}
-              {(snap.geom.residualFrac * 100).toFixed(1)}%
-            </>
-          ) : (
-            <>
-              <b>not extracted</b> — press g to give the agents evidence
-            </>
-          )}
-        </div>
-        <div style={{ marginTop: 6, color: 'var(--dim)' }}>
-          payload {fmtInt(chars)} chars
-          {run ? ` · last run ${run.model} · ${(run.totalMs / 1000).toFixed(1)}s` : ''}
-        </div>
-      </div>
+      )}
 
-      <div className="ghead">OPERATOR NOTES</div>
+      <div className="ghead">WHAT YOU KNOW THAT THE SCAN DOES NOT</div>
       <textarea
         className="snotes"
         value={notes}
-        placeholder="e.g. primary school, weekday 10:40, two classes reported unaccounted for"
+        placeholder="who was inside, time of day, building use, anything from witnesses — occupancy cannot be read from geometry, and without this the swarm will not rank the site"
         onChange={(e) => setState((x) => ({ swarm: { ...x.swarm, notes: e.target.value } }))}
       />
 
-      <div className="row" style={{ margin: '10px 0 4px' }}>
+      <div className="row" style={{ margin: '10px 0 6px' }}>
         <button
           className="btn primary"
           disabled={busy || noKey || !site}
           title={
-            noKey
-              ? 'no ANTHROPIC_API_KEY on the dev server'
-              : !site
-                ? 'select a site first'
-                : 'run all five agents'
+            noKey ? 'no API key on the dev server' : !site ? 'select a site first' : 'run the swarm'
           }
           onClick={runNow}
         >
-          {runLabel}
+          {busy ? 'THINKING…' : 'ASSESS THIS SITE'}
         </button>
         <button
           className="btn"
           disabled={visionBusy || noKey || !viewer}
-          title={
-            noKey
-              ? 'no API key on the dev server'
-              : 'render four views and ask a vision model what it sees'
-          }
+          title="render four views and ask a vision model what it sees"
           onClick={lookNow}
         >
           {visionBusy ? 'LOOKING…' : 'LOOK'}
         </button>
-        <button
-          className="btn"
-          onClick={() => {
-            const t = JSON.stringify(ctx, null, 2);
-            void copyText(t).then((ok) =>
-              ok
-                ? setStatus(`agent context copied — ${fmtInt(t.length)} chars`)
-                : (console.warn(t),
-                  setStatus('clipboard refused — the payload is on the console instead')),
-            );
-          }}
-        >
-          COPY CONTEXT
-        </button>
-        <button
-          className="btn"
-          onClick={() => {
-            setState((x) => ({ proposals: {}, swarm: { ...x.swarm, run: null } }));
-            setStatus('proposals cleared — the override log is kept');
-          }}
-        >
-          CLEAR
-        </button>
       </div>
-      {noKey ? (
+      {noKey && (
         <div className="gnote" style={{ color: 'var(--amber)' }}>
-          No reasoner reachable. Put <b>ANTHROPIC_API_KEY</b> in <b>.env.local</b> and restart the
-          dev server. The key is read server-side only — it is never bundled into the page.
+          {status?.error ??
+            'No reasoner reachable — put a key in .env.local and restart the dev server.'}
         </div>
-      ) : status ? (
-        <div className="gnote">
-          reasoner: {status.provider} · {status.model} · runs in the dev server, key never reaches
-          the browser
-        </div>
-      ) : null}
+      )}
 
-      {vision && (
+      {judgement && (
         <>
-          <div className="ghead">WHAT THE VIEWS SHOW</div>
-          <div className="sagent">
-            {vision.error ? (
-              <div className="sverdict filled">vision agent failed: {vision.error}</div>
-            ) : vision.report?.abstain ? (
-              <div className="sverdict filled">
-                <b>ABSTAINED</b> — the renders were too sparse to read. {vision.report.notes}
-              </div>
-            ) : vision.report ? (
-              <>
-                <div className="q">
-                  <b>{vision.report.scene_type || 'unidentified space'}</b> · visible damage{' '}
-                  <b>{vision.report.damage_read}</b> · confidence {vision.report.self_confidence}
-                </div>
-                <div className="sverdict filled">{vision.report.notes}</div>
-                {vision.report.objects.length > 0 && (
-                  <div className="rd">SEES · {vision.report.objects.join(', ')}</div>
-                )}
-                {vision.report.occupancy_indicators.length > 0 && (
-                  <div className="rd">
-                    SIGNS OF USE · {vision.report.occupancy_indicators.join(', ')}
-                  </div>
-                )}
-                {vision.report.hazard_indicators.length > 0 && (
-                  <div className="rd">HAZARDS · {vision.report.hazard_indicators.join(', ')}</div>
-                )}
-                <div style={{ marginTop: 6 }}>
-                  {vision.verdicts.map((v, i) => (
-                    <div className={VCLASS[v.status]} key={i}>
-                      {MARK[v.status]} {v.check}: {v.detail}
-                    </div>
-                  ))}
-                </div>
-                <div className="scited">
-                  {vision.views} views · {vision.model} · {(vision.ms / 1000).toFixed(1)}s
-                </div>
-              </>
-            ) : null}
+          <div
+            className="verdict"
+            style={{ borderLeftColor: judgement.level === 'ranked' ? 'var(--dim)' : 'var(--r2)' }}
+          >
+            <div
+              className="v-level"
+              style={{ color: judgement.level === 'ranked' ? 'var(--dim)' : 'var(--r2)' }}
+            >
+              {LEVEL_WORD[judgement.level]}
+            </div>
+            <div className="v-head">{judgement.headline}</div>
+            <div className="v-detail">{judgement.detail}</div>
           </div>
+
+          <div className="ghead">WHAT THE SWARM FOUND</div>
+          {judgement.lines.map((l) => (
+            <div className="wline" key={l.label} style={{ cursor: 'default' }}>
+              <i style={{ background: TONE[l.tone] }} />
+              <span className="lbl">{l.label}</span>
+              <span className="say">{l.text}</span>
+            </div>
+          ))}
+
+          {judgement.applicable.length > 0 && site && (
+            <button
+              className="btn primary"
+              style={{ width: '100%', marginTop: 8 }}
+              onClick={useThese}
+            >
+              USE THESE {judgement.applicable.length} VALUE
+              {judgement.applicable.length === 1 ? '' : 'S'}
+            </button>
+          )}
         </>
       )}
 
-      <div className="ghead">AGENTS</div>
-      {SWARM_AGENTS.map((a) => {
-        const res = byKey.get(a.key);
-        const pr = s.proposals[a.key];
-        const chip = res?.error
-          ? 'ERROR'
-          : res?.abstained
-            ? 'ABSTAINED'
-            : res && !res.verified
-              ? 'UNVERIFIED'
-              : pr
-                ? 'PROPOSED'
-                : 'NO PROPOSAL';
-        return (
-          <div className="sagent" key={a.key}>
-            <div className="top">
-              <span className="nm">{a.name}</span>
-              <span className="chip">→ {a.label}</span>
-              <span className={pr && res?.verified ? 'chip filled' : 'chip'}>{chip}</span>
-            </div>
-            <div className="q">
-              operator value now: <b>{paramText(site, a.param)}</b>
-            </div>
-
-            <div className={res ? 'sverdict filled' : 'sverdict'}>
-              {!res ? (
-                'no proposal yet — RUN SWARM to put the agents over the current evidence'
-              ) : res.error ? (
-                `agent failed: ${res.error}`
-              ) : (
-                <>
-                  {res.abstained ? (
-                    <b>ABSTAINED — no admissible evidence for this parameter</b>
-                  ) : (
-                    <b>proposes: {proposalText(res.value as ProposalValue, a.param)}</b>
-                  )}
-                  {`  ·  self-confidence ${res.selfConfidence}  ·  ${(res.ms / 1000).toFixed(1)}s`}
-                  <div style={{ marginTop: 5 }}>{res.rationale}</div>
-                  {res.evidenceUsed.length > 0 ? (
-                    <div className="scited">cited: {res.evidenceUsed.join('  ')}</div>
-                  ) : null}
-                  <div style={{ marginTop: 6 }}>
-                    {res.verdicts.map((v, i) => (
-                      <div className={VCLASS[v.status]} key={i}>
-                        {MARK[v.status]} {v.check}: {v.detail}
-                      </div>
-                    ))}
-                  </div>
-                </>
+      {vision && !vision.error && vision.report && (
+        <>
+          <div className="ghead">WHAT THE VIEWS SHOW</div>
+          {vision.report.abstain ? (
+            <div className="vfact">Too sparse to read. {vision.report.notes}</div>
+          ) : (
+            <>
+              <div className="vfact">
+                <b>{vision.report.scene_type || 'unidentified space'}</b> — {vision.report.notes}
+              </div>
+              {vision.report.objects.length > 0 && (
+                <div className="wline" style={{ cursor: 'default' }}>
+                  <i style={{ background: 'var(--dim)' }} />
+                  <span className="lbl">Sees</span>
+                  <span className="say">{vision.report.objects.join(', ')}</span>
+                </div>
               )}
-            </div>
-
-            <button
-              className="btn sbtn"
-              disabled={!pr || !site || !res?.verified || res?.abstained}
-              title={
-                res && !res.verified
-                  ? 'a verifier failed — review the proposal before applying it'
-                  : res?.abstained
-                    ? 'the agent abstained, so there is nothing to apply'
-                    : 'apply this value to the slider and log the override'
-              }
-              onClick={() => apply(a.key)}
-            >
-              APPLY TO SLIDER
-            </button>
-          </div>
-        );
-      })}
-
-      <div className="ghead">OVERRIDE LOG</div>
-      {!s.overrideLog.length ? (
-        <div className="gempty">
-          No overrides yet. Applying a proposal records what it replaced.
-        </div>
-      ) : (
-        [...s.overrideLog].reverse().map((e, i) => (
-          <div className="grow deb" key={i}>
-            <div className="top">
-              <span className="nm">
-                {e.at.toTimeString().slice(0, 8)} · {e.agent}
-              </span>
-            </div>
-            <div className="meta">
-              {e.label} · {e.from} → {e.to} · operator applied
-            </div>
-          </div>
-        ))
+              {vision.report.occupancy_indicators.length > 0 && (
+                <div className="wline" style={{ cursor: 'default' }}>
+                  <i style={{ background: 'var(--r3)' }} />
+                  <span className="lbl">Use</span>
+                  <span className="say">{vision.report.occupancy_indicators.join(', ')}</span>
+                </div>
+              )}
+              {vision.report.hazard_indicators.length > 0 && (
+                <div className="wline" style={{ cursor: 'default' }}>
+                  <i style={{ background: 'var(--r1)' }} />
+                  <span className="lbl">Hazard</span>
+                  <span className="say">{vision.report.hazard_indicators.join(', ')}</span>
+                </div>
+              )}
+            </>
+          )}
+        </>
       )}
 
-      <details className="lim-details">
+      {vision?.error && <div className="gnote">vision agent failed: {vision.error}</div>}
+
+      {(run || vision) && (
+        <details className="gnote-details">
+          <summary>how each agent reasoned</summary>
+          {run?.results.map((r: AgentResult) => {
+            const a = agentByKey(r.key);
+            return (
+              <div className="sagent" key={r.key}>
+                <div className="top">
+                  <span className="nm">{a?.name ?? r.key}</span>
+                  <span className="chip">{a?.label ?? r.param}</span>
+                </div>
+                <div className="sverdict filled">
+                  {r.error
+                    ? `failed: ${r.error}`
+                    : r.abstained
+                      ? `ABSTAINED — ${r.rationale}`
+                      : `${proposalText(r.value as ProposalValue, r.param)} — ${r.rationale}`}
+                </div>
+                {r.evidenceUsed.length > 0 && (
+                  <div className="scited">cited: {r.evidenceUsed.join('  ')}</div>
+                )}
+                {r.verdicts.map((v, i) => (
+                  <div className={VCLASS[v.status]} key={i}>
+                    {MARK[v.status]} {v.check}: {v.detail}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+          {vision?.verdicts.map((v, i) => (
+            <div className={VCLASS[v.status]} key={`v${i}`}>
+              {MARK[v.status]} vision / {v.check}: {v.detail}
+            </div>
+          ))}
+          <div className="row" style={{ marginTop: 8 }}>
+            <button
+              className="btn"
+              onClick={() => {
+                const t = JSON.stringify(ctx, null, 2);
+                void copyText(t).then((ok) =>
+                  ok
+                    ? setStatus(`agent context copied — ${fmtInt(t.length)} chars`)
+                    : (console.warn(t), setStatus('clipboard refused — payload is on the console')),
+                );
+              }}
+            >
+              COPY CONTEXT
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                setState((x) => ({
+                  proposals: {},
+                  swarm: { ...x.swarm, run: null, vision: null },
+                }));
+                setStatus('cleared — the override log is kept');
+              }}
+            >
+              CLEAR
+            </button>
+          </div>
+        </details>
+      )}
+
+      {s.overrideLog.length > 0 && (
+        <details className="gnote-details">
+          <summary>what was applied ({s.overrideLog.length})</summary>
+          {[...s.overrideLog].reverse().map((e, i) => (
+            <div className="scited" key={i}>
+              {e.at.toTimeString().slice(0, 8)} · {e.agent} · {e.label} · {e.from} → {e.to}
+            </div>
+          ))}
+        </details>
+      )}
+
+      <details className="gnote-details">
         <summary>what this is not</summary>
         <ul className="lim">
           <li>
+            <b>Assisted assessment, not autonomous dispatch.</b> The swarm proposes; applying is
+            still your decision, and every applied value is logged against what it replaced.
+          </li>
+          <li>
             <b>q — P(trapped alive) has no agent.</b> Nothing in an exterior scan evidences whether
-            an occupant is alive, so it is left wholly to the operator. The gap is deliberate.
-          </li>
-          <li>A proposal is inert until applied. Applying is logged with the value it replaced.</li>
-          <li>
-            <b>Unverified is not a pass</b> — the evidence to check that claim is not in the payload
-            at all, which is the honest state for extraction probability and occupancy.
+            an occupant is alive. The gap is deliberate.
           </li>
           <li>
-            Agents read the derived geometry, never the raw cloud, and inherit all its limits.
+            <b>Unverified is not a pass</b> — it means the evidence to check that claim was not in
+            the payload, which is the honest state for extraction probability and occupancy.
           </li>
         </ul>
       </details>
