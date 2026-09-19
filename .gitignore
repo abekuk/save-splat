@@ -5,6 +5,12 @@
 node_modules/
 .DS_Store
 
+
+# build output
+dist/
+coverage/
+*.tsbuildinfo
+
 .projects/cache
 .projects/vault
 .projects/state.test.json
@@ -12,8 +18,3 @@ node_modules/
 .env
 .env.*
 !.env.example
-
-# build output
-dist/
-coverage/
-*.tsbuildinfo

@@ -594,11 +594,11 @@ export function createViewer(
    *  detection (run on the mesh's own vertices), same framing. */
   function installMesh(
     root: THREE.Object3D,
-    positions: Float32Array,
+    res: PlyResult,
     name: string,
     orient: number | null,
-    meta: { vertices: number; meshes: number; textured: boolean },
   ): void {
+    const positions = res.positions;
     const key = targetSlot();
     const outgoing = slots[key];
     if (outgoing) {
@@ -625,8 +625,8 @@ export function createViewer(
       positions,
       center: sphere.center.clone(),
       name,
-      kept: meta.vertices,
-      total: meta.vertices,
+      kept: res.kept,
+      total: res.total,
       orient: idx,
       auto: false,
       detected: det,
@@ -640,8 +640,8 @@ export function createViewer(
     frameSlot(key);
 
     cb.onStatus(
-      `${name} → slot ${key} · mesh · ${fmtInt(meta.vertices)} vertices · ${meta.meshes} part` +
-        `${meta.meshes === 1 ? '' : 's'} · ${meta.textured ? 'textured' : 'untextured'}` +
+      `${name} → slot ${key} · textured mesh · ${fmtInt(res.kept)} points sampled over its surface` +
+        ` · colour ${res.colorSource}` +
         (det
           ? ` · up-axis ${ORIENTS[idx].name}` +
             (det.confident ? '' : ' (UNCERTAIN — press f if this looks wrong)')

@@ -3,9 +3,8 @@ import { createViewer } from '@/scene/viewer';
 import type { Viewer } from '@/scene/viewer';
 import { extractGeometry } from '@/core/geometry/extract';
 import { ranked } from '@/core/ranking';
-import { loadPlyFile, readAll } from '@/core/ply/load';
-import { isMeshFile, parseGlb } from '@/core/mesh/glb';
-import { afterPaint, fmtBytes } from '@/core/util';
+import { loadPlyFile } from '@/core/ply/load';
+import { isMeshFile, loadMeshFile } from '@/core/mesh/load';
 import { makeSynthetic } from '@/core/synthetic';
 import {
   addSite,
@@ -16,7 +15,7 @@ import {
   setStatus,
   useAppState,
 } from '@/state/store';
-import TopBar from '@/components/TopBar';
+import Hud, { StatusChip } from '@/components/Hud';
 import LoadOverlay from '@/components/LoadOverlay';
 import Panel from '@/components/Panel';
 
@@ -90,61 +89,15 @@ export default function ViewerApp({
         loadFile: `${file.name}`,
         loading: { phase: 'reading', frac: 0, message: 'opening …' },
       });
-
-      const fail = (msg: string, err?: unknown): void => {
-        if (err) console.error(err);
-        setState({ loading: null });
-        setStatus(`load failed: ${msg}`);
-        window.alert(
-          `Could not load "${file.name}".\n\n${msg}\n\n` +
-            'savesplat reads .ply point clouds and gaussian splats (Scaniverse, Polycam), and ' +
-            '.glb / .gltf textured meshes.',
-        );
-      };
-
-      // A glTF mesh takes a different path: no sampling, no covariance, and the geometry
-      // pass runs on its vertices instead of a point cloud.
-      if (isMeshFile(file.name)) {
-        void (async () => {
-          let buf: ArrayBuffer;
-          try {
-            buf = await readAll(file, (frac) =>
-              setState({
-                loading: {
-                  phase: 'reading',
-                  frac: frac * 0.9,
-                  message: `${fmtBytes(file.size)} · ${Math.round(frac * 100)}%`,
-                },
-              }),
-            );
-          } catch (err) {
-            fail(err instanceof Error ? err.message : 'the read failed', err);
-            return;
-          }
-          setState({ loading: { phase: 'parsing', frac: 0.93, message: 'decoding mesh …' } });
-          await new Promise<void>((r) => afterPaint(r));
-          try {
-            const res = await parseGlb(buf);
-            setState({ loading: { phase: 'building', frac: 1, message: 'building the scene …' } });
-            await new Promise<void>((r) => afterPaint(r));
-            v.installMesh(res.root, res.positions, file.name, null, {
-              vertices: res.vertices,
-              meshes: res.meshes,
-              textured: res.textured,
-            });
-            setState({ loading: null, selectedPlane: -1 });
-          } catch (err) {
-            fail(err instanceof Error ? err.message : 'could not decode this glTF', err);
-          }
-        })();
-        return;
-      }
-
-      void loadPlyFile(file, {
+      const mesh = isMeshFile(file.name);
+      void (mesh ? loadMeshFile : loadPlyFile)(file, {
         onProgress: (p) => setState({ loading: p }),
-        onDone: (res) => {
+        onDone: (res, _info, root) => {
           try {
-            v.installCloud(res, file.name, null);
+            // A glTF hands back both: the textured mesh to render, and a cloud sampled
+            // evenly over its surface for the extractor. A .ply has only the cloud.
+            if (root) v.installMesh(root, res, file.name, null);
+            else v.installCloud(res, file.name, null);
           } catch (err) {
             console.error(err);
             setState({ loading: null });
@@ -153,7 +106,20 @@ export default function ViewerApp({
           }
           setState({ loading: null, selectedPlane: -1 });
         },
-        onFail: fail,
+        onFail: (msg, err) => {
+          if (err) console.error(err);
+          setState({ loading: null });
+          setStatus(`load failed: ${msg}`);
+          window.alert(
+            `Could not load "${file.name}".\n\n${msg}\n\n` +
+              (mesh
+                ? 'Meshes are read from .glb/.gltf and sampled into a point cloud. Compressed ' +
+                  'geometry (Draco, meshopt) needs a decoder that is not bundled — re-export ' +
+                  'without compression, or send the .ply.'
+                : 'Point and splat clouds are read from .ply (Scaniverse, Polycam, gaussian-splat ' +
+                  'exports). For a mesh, export .glb instead.'),
+          );
+        },
         confirmLarge: (msg) => window.confirm(msg),
         onCancel: () => {
           setState({ loading: null });
@@ -249,8 +215,8 @@ export default function ViewerApp({
       <div id="view" ref={viewRef} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
         <canvas id="gl" ref={canvasRef} />
         <div id="labels" ref={labelsRef} />
-        <TopBar viewer={viewer} onLoadFile={load} onGeometry={runGeometry} onExit={onExit} />
-        <div id="statusbar">{s.status}</div>
+        <Hud viewer={viewer} onLoadFile={load} onGeometry={runGeometry} onExit={onExit} />
+        <StatusChip text={s.status} />
         <div id="hintbar" className={s.hint ? 'on' : undefined}>
           {s.hint}
         </div>

@@ -1,0 +1,184 @@
+/* Floating control rail. Sits over the scene rather than taking a band off the top of it. */
+.hud {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.hud > * {
+  pointer-events: auto;
+}
+.hud-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.07);
+}
+.hud-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  transition: background 0.12s ease;
+}
+.hud-btn:hover:not(:disabled) {
+  background: var(--sunk);
+}
+.hud-btn.on,
+.hud-btn.open {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.hud-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.hud-btn.busy svg {
+  animation: hud-pulse 1s ease-in-out infinite;
+}
+@keyframes hud-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.hud-sep {
+  height: 1px;
+  margin: 3px 6px;
+  background: var(--line);
+}
+
+.hud-flyout {
+  position: relative;
+  min-width: 190px;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 8px 24px rgba(0, 0, 0, 0.07);
+}
+.hud-flyout-t {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding: 2px 4px 6px;
+}
+.hud-opt {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.hud-opt:hover {
+  background: var(--sunk);
+}
+.hud-opt.on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.hud-opt em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--dim);
+}
+.hud-opt.on em {
+  color: rgba(255, 255, 255, 0.65);
+}
+.hud-flyout-n {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--dim);
+  padding: 6px 4px 2px;
+}
+
+/* Status: a chip that says the short version, and opens for the rest. */
+.hud-status {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 6;
+  max-width: min(58%, 620px);
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--dim);
+  cursor: pointer;
+  text-align: left;
+}
+.hud-status .txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hud-status.open .txt {
+  white-space: normal;
+}
+.hud-status .more {
+  color: var(--fg);
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .hud {
+    left: 8px;
+    top: auto;
+    bottom: 54px;
+    transform: none;
+  }
+  .hud-rail {
+    flex-direction: row;
+  }
+  .hud-sep {
+    width: 1px;
+    height: auto;
+    margin: 6px 3px;
+  }
+  .hud-flyout {
+    position: absolute;
+    left: 0;
+    bottom: 52px;
+  }
+  .hud-status {
+    bottom: 8px;
+    max-width: calc(100% - 16px);
+  }
+}

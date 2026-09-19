@@ -172,6 +172,106 @@ function planeBasis(nx: number, ny: number, nz: number): number[] {
   return [ux, uy, uz, vx, vy, vz];
 }
 
+/** Points a typical occupied cell should hold; sets the grid resolution. */
+const TARGET_PER_CELL = 6;
+/** Fraction of a patch's median cell population below which a cell is noise, not surface. */
+const DENSITY_FLOOR = 0.34;
+/** Connected regions smaller than this share of the largest are not part of the same patch. */
+const COMPONENT_FLOOR = 0.2;
+/* A patch whose rectangle is mostly empty misrepresents where the surface is. Some fits land
+   on genuinely diffuse material — scattered returns spread thin over a wide area — and for
+   those there is no dense core to tighten onto, so the honest thing is not to draw them at
+   all. Their points are still claimed, so the extractor moves on rather than refitting them. */
+const MIN_PATCH_FILL = 0.25;
+
+export interface DensePatch {
+  umin: number; umax: number; vmin: number; vmax: number;
+  /** measured from occupied cells, so an L-shaped wall is not credited with its rectangle */
+  area: number;
+  used: number;
+}
+
+/** Rasterise in-plane coordinates, keep only cells carrying real density, then keep only the
+ *  connected regions worth a fifth of the largest, and report the box around what survives. */
+export function densePatch(
+  uu: ArrayLike<number>, vv: ArrayLike<number>, n: number,
+  umin: number, umax: number, vmin: number, vmax: number,
+): DensePatch {
+  var du = Math.max(umax - umin, 1e-6), dv = Math.max(vmax - vmin, 1e-6);
+  /* Resolution has to follow the point count, not just the extent. A fixed grid over a
+     patch with few inliers leaves most cells holding one point, the median collapses to 1,
+     and the density test degenerates into "at least two points" — which scattered noise
+     clears easily. Aim for TARGET_PER_CELL points in a typical occupied cell so the median
+     is a meaningful yardstick. */
+  var target = Math.max(16, n / TARGET_PER_CELL);
+  var aspect = du / dv;
+  var gw = Math.min(128, Math.max(4, Math.round(Math.sqrt(target * aspect))));
+  var gh = Math.min(128, Math.max(4, Math.round(target / gw)));
+  var count = new Int32Array(gw * gh);
+  var inside = 0, j;
+  for (j = 0; j < n; j++){
+    var a = uu[j], b = vv[j];
+    if (a < umin || a > umax || b < vmin || b > vmax) continue;   // outside a tightened box
+    var gi = Math.min(gw-1, Math.max(0, Math.floor((a - umin) / du * gw)));
+    var gj = Math.min(gh-1, Math.max(0, Math.floor((b - vmin) / dv * gh)));
+    count[gj*gw + gi]++;
+    inside++;
+  }
+  var cwu = du / gw, cwv = dv / gh, cellA = cwu * cwv;
+  if (inside === 0) return { umin, umax, vmin, vmax, area: 0, used: 0 };
+
+  // threshold relative to this patch's own median, so it scales with capture density
+  var pop: number[] = [];
+  for (var k = 0; k < count.length; k++) if (count[k] > 0) pop.push(count[k]);
+  pop.sort(function(x, y){ return x - y; });
+  var median = pop[pop.length >> 1] || 1;
+  var minCount = Math.max(2, Math.ceil(median * DENSITY_FLOOR));
+  var dense = new Uint8Array(gw * gh), denseCells = 0;
+  for (k = 0; k < count.length; k++) if (count[k] >= minCount){ dense[k] = 1; denseCells++; }
+  if (denseCells === 0){                                          // uniformly thin: keep presence
+    for (k = 0; k < count.length; k++) if (count[k] > 0){ dense[k] = 1; denseCells++; }
+  }
+
+  var comp = new Int32Array(gw * gh).fill(-1), sizes: number[] = [], stack: number[] = [];
+  for (var cj = 0; cj < gh; cj++) for (var ci = 0; ci < gw; ci++){
+    var c0 = cj*gw + ci;
+    if (!dense[c0] || comp[c0] >= 0) continue;
+    var id = sizes.length, sz = 0;
+    stack.length = 0; stack.push(c0); comp[c0] = id;
+    while (stack.length){
+      var cur = stack.pop() as number; sz++;
+      var xi = cur % gw, yj = (cur / gw) | 0;
+      for (var ddi = -1; ddi <= 1; ddi++) for (var ddj = -1; ddj <= 1; ddj++){
+        if (!ddi && !ddj) continue;
+        var ni = xi + ddi, nj = yj + ddj;
+        if (ni < 0 || nj < 0 || ni >= gw || nj >= gh) continue;
+        var nk = nj*gw + ni;
+        if (!dense[nk] || comp[nk] >= 0) continue;
+        comp[nk] = id; stack.push(nk);
+      }
+    }
+    sizes.push(sz);
+  }
+  var biggest = 0;
+  for (var si = 0; si < sizes.length; si++) if (sizes[si] > biggest) biggest = sizes[si];
+  var keepMin = biggest * COMPONENT_FLOOR;
+
+  var used = 0, i0 = Infinity, i1 = -Infinity, j0 = Infinity, j1 = -Infinity;
+  for (cj = 0; cj < gh; cj++) for (ci = 0; ci < gw; ci++){
+    var ck = cj*gw + ci;
+    if (comp[ck] < 0 || sizes[comp[ck]] < keepMin) continue;
+    used++;
+    if (ci < i0) i0 = ci; if (ci > i1) i1 = ci;
+    if (cj < j0) j0 = cj; if (cj > j1) j1 = cj;
+  }
+  if (used === 0) return { umin, umax, vmin, vmax, area: 0, used: 0 };
+  return {
+    umin: umin + i0 * cwu, umax: umin + (i1 + 1) * cwu,
+    vmin: vmin + j0 * cwv, vmax: vmin + (j1 + 1) * cwv,
+    area: used * cellA, used,
+  };
+}
+
 /* ---------- the extractor: chunked so the UI keeps painting ---------- */
 export function extractGeometry(
   input: ExtractInput,
@@ -205,7 +305,7 @@ export function extractGeometry(
   var totalW = 0;
   for (i = 0; i < ws.n; i++) totalW += A[i];
 
-  var planes: Plane[] = [], iter = 0, best: number[] | null = null, bestScore = 0,
+  var planes: Plane[] = [], droppedDiffuse = 0, iter = 0, best: number[] | null = null, bestScore = 0,
       stage = 'ransac', gridDirty = true;
   var result: GeometryResult | null = null;
   var t0 = performance.now();
@@ -351,7 +451,7 @@ export function extractGeometry(
     return { nx: nx, ny: ny, nz: nz, d: d, cx: cx, cy: cy, cz: cz, res: res };
   }
 
-  function finalisePlane(f: Fit): Plane {
+  function finalisePlane(f: Fit): Plane | null {
     var nx = f.nx, ny = f.ny, nz = f.nz, d = f.d, cnt = f.res.count;
     if (ny < 0){ nx = -nx; ny = -ny; nz = -nz; d = -d; }    // orient consistently (normals point up-ish)
     var bs = planeBasis(nx, ny, nz);
@@ -375,73 +475,22 @@ export function extractGeometry(
     }
     var rms = Math.sqrt(sr2 / sw);
 
-    // occupancy area: rasterise the inliers in plane coords, so an L-shaped wall is not
-    // credited with its whole bounding rectangle
-    var du = Math.max(umax - umin, 1e-6), dv = Math.max(vmax - vmin, 1e-6);
-    var cell = Math.max(Math.sqrt(du*dv) / 48, 1e-6);
-    var gw = Math.min(256, Math.max(1, Math.ceil(du / cell))) , gh = Math.min(256, Math.max(1, Math.ceil(dv / cell)));
-    var occ = new Uint8Array(gw * gh);
-    var uh = new Int32Array(gw), vh = new Int32Array(gh);
-    for (j = 0; j < cnt; j++){
-      var gi = Math.min(gw-1, Math.max(0, Math.floor((uu[j]-umin) / du * gw)));
-      var gj = Math.min(gh-1, Math.max(0, Math.floor((vv[j]-vmin) / dv * gh)));
-      occ[gj*gw + gi] = 1;
-      uh[gi]++; vh[gj]++;
-    }
-    // A handful of stragglers must not stretch the patch across the whole scene: trim the extent
-    // to the 1st-99th percentile of the material, and measure area inside that trim.
-    function trim(hist: ArrayLike<number>, n: number): number[] {
-      var lo = 0, hi = hist.length - 1, acc = 0, cut = n * 0.01, k;
-      for (k = 0; k < hist.length; k++){ acc += hist[k]; if (acc >= cut){ lo = k; break; } }
-      acc = 0;
-      for (k = hist.length - 1; k >= 0; k--){ acc += hist[k]; if (acc >= cut){ hi = k; break; } }
-      if (hi < lo) { lo = 0; hi = hist.length - 1; }
-      return [lo, hi];
-    }
-    var tu = trim(uh, cnt), tv = trim(vh, cnt);
-    var cwu = du / gw, cwv = dv / gh;
+    /* The drawn rectangle is the plane's claim about where the surface is, so it has to be
+       bounded by where material actually is — not by where a stray point happens to land.
+       Counting a cell as surface on a single point let sparse floaters form thin trails that
+       kept the connected region attached and stretched the patch across empty space. A cell
+       now has to carry real density relative to the rest of the patch before it counts.
 
-    /* A plane is the material that hangs together, not everything that happens to be coplanar with it.
-       Where a wall meets a floor the junction line is genuinely in the floor's plane and would stretch
-       its patch across the room, so keep only connected regions worth at least a fifth of the largest. */
-    var comp = new Int32Array(gw * gh).fill(-1), sizes: number[] = [], stack: number[] = [];
-    for (var cj = tv[0]; cj <= tv[1]; cj++) for (var ci = tu[0]; ci <= tu[1]; ci++){
-      var c0 = cj*gw + ci;
-      if (!occ[c0] || comp[c0] >= 0) continue;
-      var id = sizes.length, n2 = 0;
-      stack.length = 0; stack.push(c0); comp[c0] = id;
-      while (stack.length){
-        var cur = stack.pop() as number; n2++;
-        var xi = cur % gw, yj = (cur / gw) | 0;
-        for (var ddi = -1; ddi <= 1; ddi++) for (var ddj = -1; ddj <= 1; ddj++){
-          if (!ddi && !ddj) continue;
-          var ni = xi + ddi, nj = yj + ddj;
-          if (ni < tu[0] || ni > tu[1] || nj < tv[0] || nj > tv[1]) continue;
-          var nk = nj*gw + ni;
-          if (!occ[nk] || comp[nk] >= 0) continue;
-          comp[nk] = id; stack.push(nk);
-        }
-      }
-      sizes.push(n2);
+       Two passes: the first finds the dense core inside a possibly-inflated extent, the
+       second re-grids that core so the area is measured at a resolution that suits it. */
+    var patch = densePatch(uu, vv, cnt, umin, umax, vmin, vmax);
+    if (patch.used > 0) {
+      patch = densePatch(uu, vv, cnt, patch.umin, patch.umax, patch.vmin, patch.vmax);
     }
-    var biggest = 0;
-    for (var si = 0; si < sizes.length; si++) if (sizes[si] > biggest) biggest = sizes[si];
-    var keepMin = biggest * 0.2;
-    var used = 0, kui0 = Infinity, kui1 = -Infinity, kvj0 = Infinity, kvj1 = -Infinity;
-    for (cj = tv[0]; cj <= tv[1]; cj++) for (ci = tu[0]; ci <= tu[1]; ci++){
-      var ck = cj*gw + ci;
-      if (comp[ck] < 0 || sizes[comp[ck]] < keepMin) continue;
-      used++;
-      if (ci < kui0) kui0 = ci; if (ci > kui1) kui1 = ci;
-      if (cj < kvj0) kvj0 = cj; if (cj > kvj1) kvj1 = cj;
-    }
-    if (used === 0){ kui0 = tu[0]; kui1 = tu[1]; kvj0 = tv[0]; kvj1 = tv[1]; used = 1; }
-    var cellA = cwu * cwv;
-    var area = used * cellA;
-    var nUmin = umin + kui0 * cwu, nUmax = umin + (kui1 + 1) * cwu;
-    var nVmin = vmin + kvj0 * cwv, nVmax = vmin + (kvj1 + 1) * cwv;
-    umin = nUmin; umax = nUmax; vmin = nVmin; vmax = nVmax;
+    umin = patch.umin; umax = patch.umax; vmin = patch.vmin; vmax = patch.vmax;
+    var area = patch.area;
     var bboxA = Math.max((umax - umin) * (vmax - vmin), 1e-9);
+    if (patch.used === 0 || area / bboxA < MIN_PATCH_FILL) return null;   // too diffuse to draw
 
     // classification and the numbers that matter
     var c = Math.abs(nx*UP.x + ny*UP.y + nz*UP.z);          // |n . z-hat|
@@ -605,11 +654,18 @@ export function extractGeometry(
             dup.claimed = (dup.claimed || dup.count) + band.count;
             removeInliers(band.count);
           } else {
-            var pl = finalisePlane(f);         // stats come from the tight fit
-            planes.push(pl);
-            var wide = claimBand(pl.n[0], pl.n[1], pl.n[2], pl.d);
-            pl.claimed = wide.count;           // but the whole thickness leaves the pool
-            removeInliers(wide.count);
+            var pl = finalisePlane(f);         // stats come from the tight fit; null if diffuse
+            if (pl){
+              planes.push(pl);
+              var wide = claimBand(pl.n[0], pl.n[1], pl.n[2], pl.d);
+              pl.claimed = wide.count;         // but the whole thickness leaves the pool
+              removeInliers(wide.count);
+            } else {
+              // claim it anyway, so the extractor moves on instead of refitting the same haze
+              var vague = claimBand(f.nx, f.ny, f.nz, f.d);
+              droppedDiffuse++;
+              removeInliers(vague.count);
+            }
           }
           gridDirty = true;
         }
@@ -626,6 +682,7 @@ export function extractGeometry(
         planes: planes, debris: deb,
         workingSet: ws.n, sampleStep: ws.step, radius: R,
         usedCovariance: !!C, totalWeight: totalW,
+        droppedDiffuse: droppedDiffuse,
         residualPoints: remCount, residualFrac: residualW / totalW,
         ms: Math.round(performance.now() - t0)
       };

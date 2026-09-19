@@ -94,3 +94,13 @@ For end-to-end work, `npm run preview` plus a headless Chrome over CDP is what h
 large `.ply` fixture can be generated rather than committed (they are hundreds of MB).
 
 <!-- stripe projects llm-context appends provider guidance below this line -->
+
+<!-- stripe-projects-cli managed:agents-md:start -->
+## Stripe Projects CLI
+
+This repository is initialized for the Stripe project "save-splat".
+
+## Tools used
+
+- [Stripe CLI](https://docs.stripe.com/stripe-cli) with the `projects` plugin to manage third-party services, credentials, and deployments for this project. Use the stripe-projects-cli to manage deploying and access to third party services.
+<!-- stripe-projects-cli managed:agents-md:end -->

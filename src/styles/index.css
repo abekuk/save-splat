@@ -3,5 +3,6 @@
 @import './tokens.css';
 @import './scene.css';
 @import './panel.css';
+@import './hud.css';
 @import './landing.css';
 @import './responsive.css';

@@ -58,7 +58,7 @@ export default function Landing({
           <input
             ref={fileRef}
             type="file"
-            accept=".ply,.glb,.gltf,application/octet-stream"
+            accept=".ply,.glb,.gltf,model/gltf-binary,application/octet-stream"
             hidden
             onChange={(e) => {
               const f = e.target.files?.[0];

@@ -56,22 +56,6 @@ body.marking canvas#gl {
   border-color: var(--amber);
 }
 
-#topbar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  flex-wrap: wrap;
-  padding: 8px 10px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0));
-  pointer-events: none;
-}
-#topbar > * {
-  pointer-events: auto;
-}
 .brand {
   font-family: var(--mono);
   letter-spacing: 0.18em;
@@ -91,19 +75,6 @@ body.marking canvas#gl {
   margin: 0 2px;
 }
 
-#statusbar {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  max-width: 62%;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--dim);
-  background: var(--veil);
-  border: 1px solid var(--line);
-  padding: 5px 8px;
-  border-radius: 3px;
-}
 #hintbar {
   position: absolute;
   right: 10px;
