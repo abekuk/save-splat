@@ -38,6 +38,10 @@ src/
     swarm/schema.ts    Zod: the validation boundary for anything from outside
   components/        the panel UI
   styles/            tokens / scene / panel / responsive
+server/swarm/        the reasoner: prompts → provider call → Zod gate → verifiers. Node only.
+  providers/         openrouter | openai | anthropic behind one Reasoner interface
+  http.ts            the two endpoints, mounted by Vite (dev + preview) and by api/
+api/swarm/           Vercel functions — thin wrappers over server/swarm/http.ts
 *.test.ts            vitest, colocated; run in a node env because core has no DOM
 ```
 
@@ -50,11 +54,12 @@ run and checked without a renderer.
 - Not a true gaussian rasterizer — the splat renders as `THREE.Points` with vertex colours.
 - Not a mesh. Planes, angles and volumes are the deliverable; a surface hides the residual.
 - A/B scan slots are a visual toggle. No alignment, registration or change detection.
-- The agent swarm is a **UI shell**: no reasoning, no backend, no API key. `RubbleSwarm.propose()`
-  is the seam a reasoner plugs into, validated by Zod — proposals are _rejected_ rather than
+- The agent swarm is **assisted assessment, not autonomy**. Five agents (one per ranking
+  parameter, each with its own evidence source and a deterministic verifier) run server-side
+  against the extracted geometry and return proposals validated by Zod — _rejected_ rather than
   clamped, because silently turning `n = 500` into `50` launders a reasoning failure into the
-  ranking. Proposals stay inert until an operator applies one, and every application is logged
-  with the value it replaced.
+  ranking. A proposal is inert until an operator applies it, and every application is logged
+  with the value it replaced. `q` (P trapped alive) has no agent on purpose.
 - Output is a ranked prior for incident command review, not an autonomous dispatch order.
 
 ## Conventions
@@ -63,7 +68,16 @@ See [AGENTS.md](AGENTS.md) before changing anything — it records which files a
 (excluded from Prettier on purpose), the `core/` purity rule, and the domain invariants that must
 not be "fixed".
 
+## Running the swarm
+
+The reasoner needs one key, server-side, in `.env.local` (see `.env.example`):
+`OPENROUTER_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. The model is resolved from the
+account rather than hardcoded; pin it with `SWARM_MODEL`. `/api/swarm/status` reports what is
+configured, and the RUN SWARM button says why it is disabled when nothing is.
+
 ## Infrastructure
 
-Provisioning and credentials go through the Stripe Projects CLI — see [SETUP.md](SETUP.md),
-which also corrects three commands from the guide that was circulating.
+Provisioning and credentials go through the Stripe Projects CLI — OpenRouter for the
+reasoner, Vercel for hosting, Supabase for an optional append-only run log. See
+[SETUP.md](SETUP.md) for the verified login flow, the provisioning order, and the deploy
+steps; it also corrects three commands from the guide that was circulating.
