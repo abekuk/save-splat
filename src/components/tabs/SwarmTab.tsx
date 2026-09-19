@@ -3,7 +3,9 @@ import type { AppSnapshot } from '@/core/snapshot';
 import { SWARM_AGENTS, agentByKey, parseProposal } from '@/core/swarm/agents';
 import type { AgentParam, ProposalValue } from '@/core/swarm/agents';
 import { buildSwarmContext, copyText } from '@/core/swarm/context';
-import { runSwarmRemote, swarmStatus } from '@/core/swarm/client';
+import { runSwarmRemote, runVisionRemote, swarmStatus } from '@/core/swarm/client';
+import { buildVerdict } from '@/core/geometry/verdict';
+import type { Viewer } from '@/scene/viewer';
 import type { AgentResult, Verdict } from '@/core/swarm/proposal';
 import { LAMBDA, TYPE_LABEL, rho } from '@/core/ranking';
 import { mVol } from '@/core/units';
@@ -42,12 +44,12 @@ const VCLASS: Record<Verdict['status'], string> = {
   unverified: 'vline unver',
 };
 
-export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
+export default function SwarmTab({ viewer, snap }: { viewer: Viewer | null; snap: AppSnapshot }) {
   const s = useAppState();
   const site = s.sites.find((x) => x.id === s.selectedId) ?? null;
   const ctx = buildSwarmContext(snap);
   const chars = JSON.stringify(ctx).length;
-  const { run, busy, notes, status } = s.swarm;
+  const { run, busy, notes, status, vision, visionBusy } = s.swarm;
 
   const byKey = new Map<string, AgentResult>((run?.results ?? []).map((r) => [r.key, r]));
 
@@ -99,6 +101,37 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
       overrideLog: [...st.overrideLog, { at: new Date(), agent: a.name, label: a.label, from, to }],
     }));
     setStatus(`${a.name} proposal applied to ${site.name} — override logged`);
+  };
+
+  /* The vision agent sees the scan, so it needs pictures of it — taken here rather than
+     server-side, because the renderer with the scan in it lives in this tab's process. */
+  const lookNow = (): void => {
+    if (!viewer || visionBusy) return;
+    setState((x) => ({ swarm: { ...x.swarm, visionBusy: true } }));
+    setStatus('capturing views for the vision agent …');
+    let images: string[];
+    try {
+      images = viewer.captureViews(4);
+    } catch (e) {
+      setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
+      setStatus(`could not capture views: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    const level = snap.geom ? buildVerdict(snap.geom.planes).level : 'unknown';
+    setStatus(`${images.length} views captured — asking the vision agent …`);
+    void runVisionRemote({ images, geometryLevel: level, sceneNote: notes || null })
+      .then((res) => {
+        setState((x) => ({ swarm: { ...x.swarm, vision: res, visionBusy: false } }));
+        setStatus(
+          res.error
+            ? `vision failed: ${res.error}`
+            : `vision done in ${(res.ms / 1000).toFixed(1)}s · ${res.verdicts.filter((v) => v.status === 'fail').length} check(s) failed`,
+        );
+      })
+      .catch((e: unknown) => {
+        setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
+        setStatus(`vision failed: ${e instanceof Error ? e.message : String(e)}`);
+      });
   };
 
   const runNow = (): void => {
@@ -209,6 +242,18 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
         </button>
         <button
           className="btn"
+          disabled={visionBusy || noKey || !viewer}
+          title={
+            noKey
+              ? 'no API key on the dev server'
+              : 'render four views and ask a vision model what it sees'
+          }
+          onClick={lookNow}
+        >
+          {visionBusy ? 'LOOKING…' : 'LOOK'}
+        </button>
+        <button
+          className="btn"
           onClick={() => {
             const t = JSON.stringify(ctx, null, 2);
             void copyText(t).then((ok) =>
@@ -242,6 +287,50 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
           the browser
         </div>
       ) : null}
+
+      {vision && (
+        <>
+          <div className="ghead">WHAT THE VIEWS SHOW</div>
+          <div className="sagent">
+            {vision.error ? (
+              <div className="sverdict filled">vision agent failed: {vision.error}</div>
+            ) : vision.report?.abstain ? (
+              <div className="sverdict filled">
+                <b>ABSTAINED</b> — the renders were too sparse to read. {vision.report.notes}
+              </div>
+            ) : vision.report ? (
+              <>
+                <div className="q">
+                  <b>{vision.report.scene_type || 'unidentified space'}</b> · visible damage{' '}
+                  <b>{vision.report.damage_read}</b> · confidence {vision.report.self_confidence}
+                </div>
+                <div className="sverdict filled">{vision.report.notes}</div>
+                {vision.report.objects.length > 0 && (
+                  <div className="rd">SEES · {vision.report.objects.join(', ')}</div>
+                )}
+                {vision.report.occupancy_indicators.length > 0 && (
+                  <div className="rd">
+                    SIGNS OF USE · {vision.report.occupancy_indicators.join(', ')}
+                  </div>
+                )}
+                {vision.report.hazard_indicators.length > 0 && (
+                  <div className="rd">HAZARDS · {vision.report.hazard_indicators.join(', ')}</div>
+                )}
+                <div style={{ marginTop: 6 }}>
+                  {vision.verdicts.map((v, i) => (
+                    <div className={VCLASS[v.status]} key={i}>
+                      {MARK[v.status]} {v.check}: {v.detail}
+                    </div>
+                  ))}
+                </div>
+                <div className="scited">
+                  {vision.views} views · {vision.model} · {(vision.ms / 1000).toFixed(1)}s
+                </div>
+              </>
+            ) : null}
+          </div>
+        </>
+      )}
 
       <div className="ghead">AGENTS</div>
       {SWARM_AGENTS.map((a) => {

@@ -9,6 +9,7 @@ import { DEFAULTS } from '@/core/ranking';
 import type { LoadProgress } from '@/core/ply/load';
 import type { OverrideEntry, Proposal } from '@/core/swarm/agents';
 import type { SwarmRunResult } from '@/core/swarm/proposal';
+import type { VisionRunResult } from '@/core/swarm/client';
 import type { GeoStage, Site, Vec3 } from '@/types';
 
 export type TabKey = 'queue' | 'assess' | 'geo' | 'swarm' | 'model';
@@ -31,6 +32,8 @@ export interface AppState {
   /** last swarm run, plus the operator notes that fed it and whether a reasoner is reachable */
   swarm: {
     run: SwarmRunResult | null;
+    vision: VisionRunResult | null;
+    visionBusy: boolean;
     busy: boolean;
     notes: string;
     status: {
@@ -64,7 +67,7 @@ let state: AppState = {
   geoStage: 'idle',
   geoProgress: null,
   proposals: {},
-  swarm: { run: null, busy: false, notes: '', status: null },
+  swarm: { run: null, vision: null, visionBusy: false, busy: false, notes: '', status: null },
   overrideLog: [],
   slotsVersion: 0,
 };

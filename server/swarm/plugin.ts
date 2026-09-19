@@ -12,9 +12,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { loadEnv } from 'vite';
 import { runSwarm } from './handler';
+import { runVision } from './vision';
 import { detectProvider, getReasoner } from './providers';
 
-const MAX_BODY = 4 * 1024 * 1024; // a context payload with many planes is still small
+const MAX_BODY = 24 * 1024 * 1024; // six rendered JPEG views are the large case, not the JSON
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -87,6 +88,34 @@ export function swarmPlugin(): Plugin {
               effort: '',
               error: err instanceof Error ? err.message : String(err),
             });
+          }
+        })();
+      });
+
+      server.middlewares.use('/api/swarm/vision', (req, res) => {
+        if (req.method !== 'POST') {
+          json(res, 405, { error: 'POST only' });
+          return;
+        }
+        void (async () => {
+          try {
+            const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+            if (!Array.isArray(body.images) || body.images.length === 0) {
+              json(res, 400, { error: 'missing "images"' });
+              return;
+            }
+            json(
+              res,
+              200,
+              await runVision({
+                images: body.images as string[],
+                geometryLevel: body.geometryLevel as never,
+                sceneNote: typeof body.sceneNote === 'string' ? body.sceneNote : null,
+              }),
+            );
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            json(res, /API_KEY|No API key/.test(message) ? 503 : 500, { error: message });
           }
         })();
       });

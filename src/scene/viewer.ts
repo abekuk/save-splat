@@ -54,7 +54,7 @@ export function createViewer(
   labelLayer: HTMLElement,
   cb: ViewerCallbacks,
 ) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
 
@@ -645,9 +645,54 @@ export function createViewer(
   resize();
   tick();
 
+  /* Views for a vision model. It orbits a ring around the scene, renders each angle and
+     hands back JPEGs, then puts the camera back exactly where it was — an operator should
+     not find their view moved because an agent looked at something.
+     Plane overlays and markers are hidden for the capture: the model should read the scan,
+     not this app's annotations drawn on top of it. */
+  function captureViews(count = 4, quality = 0.72): string[] {
+    const shots: string[] = [];
+    const saved = {
+      theta: orbit.theta,
+      phi: orbit.phi,
+      radius: orbit.radius,
+      target: orbit.target.clone(),
+    };
+    const hadPlanes = showPlanes;
+    if (hadPlanes) {
+      showPlanes = false;
+      refreshOverlay();
+    }
+    const labels = labelLayer ? (labelLayer.style.visibility ?? '') : '';
+    if (labelLayer) labelLayer.style.visibility = 'hidden';
+    try {
+      for (let i = 0; i < count; i++) {
+        orbit.theta = saved.theta + (i / count) * Math.PI * 2;
+        orbit.phi = 1.15;
+        applyOrbit();
+        renderer.render(scene, camera);
+        shots.push(renderer.domElement.toDataURL('image/jpeg', quality));
+      }
+    } finally {
+      orbit.theta = saved.theta;
+      orbit.phi = saved.phi;
+      orbit.radius = saved.radius;
+      orbit.target.copy(saved.target);
+      applyOrbit();
+      if (labelLayer) labelLayer.style.visibility = labels;
+      if (hadPlanes) {
+        showPlanes = true;
+        refreshOverlay();
+      }
+      renderer.render(scene, camera);
+    }
+    return shots;
+  }
+
   return {
     resize,
     resetView,
+    captureViews,
     installCloud,
     setActiveSlot,
     frameSlot,

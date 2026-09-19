@@ -52,13 +52,25 @@ export class AnthropicReasoner implements Reasoner {
     const effort = (process.env.SWARM_EFFORT ?? 'high') as
       'low' | 'medium' | 'high' | 'xhigh' | 'max';
     try {
+      const schema = (req.schema ?? wireSchemaFor(req.param!)) as Parameters<
+        typeof zodOutputFormat
+      >[0];
+      const content: Anthropic.ContentBlockParam[] = [];
+      for (const img of req.images ?? []) {
+        content.push({
+          type: 'image',
+          source: { type: 'base64', media_type: img.mediaType as 'image/jpeg', data: img.data },
+        });
+      }
+      content.push({ type: 'text', text: req.user });
+
       const response = await this.client.messages.parse({
         model,
         max_tokens: 16000,
         thinking: { type: 'adaptive' },
         system: req.system,
-        output_config: { format: zodOutputFormat(wireSchemaFor(req.param)), effort },
-        messages: [{ role: 'user', content: req.user }],
+        output_config: { format: zodOutputFormat(schema), effort },
+        messages: [{ role: 'user', content }],
       });
       if (response.stop_reason === 'refusal') {
         throw new ProviderError(

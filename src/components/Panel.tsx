@@ -60,7 +60,7 @@ export default function Panel({
           <GeoTab viewer={viewer} snap={snap} onGeometry={onGeometry} />
         </div>
         <div className={s.tab === 'swarm' ? 'pane on' : 'pane'} id="pane-swarm">
-          <SwarmTab snap={snap} />
+          <SwarmTab viewer={viewer} snap={snap} />
         </div>
         <div className={s.tab === 'model' ? 'pane on' : 'pane'} id="pane-model">
           <ModelTab />

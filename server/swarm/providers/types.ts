@@ -6,10 +6,21 @@
  */
 import type { AgentParam } from '../../../src/core/swarm/agents';
 
+export interface ReasonerImage {
+  /** image/jpeg or image/png */
+  mediaType: string;
+  /** base64, without the data: prefix */
+  data: string;
+}
+
 export interface ReasonerRequest {
   system: string;
   user: string;
-  param: AgentParam;
+  /** when set, the schema is supplied by the caller instead of a parameter's */
+  schema?: unknown;
+  param?: AgentParam;
+  /** rendered views, for an agent that looks rather than reads */
+  images?: ReasonerImage[];
 }
 
 export interface ReasonerResponse {
