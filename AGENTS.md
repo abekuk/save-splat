@@ -23,6 +23,9 @@ src/core/     pure logic. NO three.js, NO DOM, NO React. Unit-tested.
 src/scene/    all three.js, imperative, behind a callback surface.
 src/state/    useSyncExternalStore. Sites live here; their meshes live in the viewer.
 src/components/  the panel UI.
+server/swarm/ the reasoner. Node only — never imported from src/. Relative imports only
+              (no `@/` alias) so Vercel can bundle it without the Vite config.
+api/swarm/    Vercel function entrypoints; each is one line calling server/swarm/http.ts.
 ```
 
 **`src/core/` must stay free of three.js and the DOM.** `buildWorkingSet` takes vertex data and a
@@ -42,6 +45,20 @@ commit.
 
 The RANSAC RNG is seeded (mulberry32). Re-running extraction on the same cloud must produce
 identical planes; `extract.test.ts` asserts this. Do not swap in `Math.random()`.
+
+## Secrets and the server boundary
+
+- **No `VITE_` prefix on any secret.** Vite inlines `VITE_*` into the client bundle. Reasoner
+  keys and the Supabase service-role key are read only in `server/swarm/` from `process.env`,
+  hydrated by `server/swarm/env.ts` — add a new name there, in `.env.example`, and nowhere else.
+- **The browser talks to `/api/swarm/*` only.** The same handlers in `server/swarm/http.ts`
+  mount on the Vite dev server, the Vite preview server (the on-stage fallback) and as Vercel
+  functions. Do not add a code path that calls a model vendor from `src/`.
+- **Providers are one interface.** Adding a vendor is one file in `server/swarm/providers/`
+  implementing `Reasoner`, plus a line in `providers/index.ts`. The model is resolved from the
+  account, never hardcoded; unit-test the picker without the network, as the existing ones do.
+- **Credentials come from Stripe Projects.** `stripe projects env --pull` writes `.env.local`;
+  `SETUP.md` is the runbook. Never commit `.env*` except `.env.example`.
 
 ## Validation boundary
 

@@ -8,6 +8,8 @@ import { useSyncExternalStore } from 'react';
 import { DEFAULTS } from '@/core/ranking';
 import type { LoadProgress } from '@/core/ply/load';
 import type { OverrideEntry, Proposal } from '@/core/swarm/agents';
+import type { SwarmRunResult } from '@/core/swarm/proposal';
+import type { SwarmStatus } from '@/core/swarm/client';
 import type { GeoStage, Site, Vec3 } from '@/types';
 
 export type TabKey = 'queue' | 'assess' | 'geo' | 'swarm' | 'model';
@@ -27,6 +29,13 @@ export interface AppState {
   geoStage: GeoStage;
   geoProgress: { planes: number; stage: string; frac: number } | null;
   proposals: Partial<Record<string, Proposal>>;
+  /** last swarm run, plus the operator notes that fed it and whether a reasoner is reachable */
+  swarm: {
+    run: SwarmRunResult | null;
+    busy: boolean;
+    notes: string;
+    status: SwarmStatus | null;
+  };
   overrideLog: OverrideEntry[];
   /** bumped whenever viewer-owned slot state changes, to re-render readers of it */
   slotsVersion: number;
@@ -50,6 +59,7 @@ let state: AppState = {
   geoStage: 'idle',
   geoProgress: null,
   proposals: {},
+  swarm: { run: null, busy: false, notes: '', status: null },
   overrideLog: [],
   slotsVersion: 0,
 };

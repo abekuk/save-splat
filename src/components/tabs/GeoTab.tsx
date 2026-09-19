@@ -185,8 +185,14 @@ export default function GeoTab({
             {b.name}
           </span>
         ))}
-        <span><i style={{ background: CLS_CSS.slab }} />SLAB</span>
-        <span><i style={{ background: CLS_CSS.incline }} />INCLINED</span>
+        <span>
+          <i style={{ background: CLS_CSS.slab }} />
+          SLAB
+        </span>
+        <span>
+          <i style={{ background: CLS_CSS.incline }} />
+          INCLINED
+        </span>
       </div>
 
       <div className="ghead">WALLS — VERTICALITY</div>
