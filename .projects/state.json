@@ -1,8 +1,14 @@
 {
   "version": 1,
   "providers": {
+    "athena": {
+      "name": "Athena"
+    },
     "openrouter": {
       "name": "OpenRouter"
+    },
+    "supabase": {
+      "name": "Supabase"
     },
     "vercel": {
       "name": "Vercel"
@@ -18,6 +24,16 @@
       "name": "openrouter-plan",
       "providerName": "OpenRouter",
       "serviceId": "free"
+    },
+    "supabase-plan": {
+      "name": "supabase-plan",
+      "providerName": "Supabase",
+      "serviceId": "free"
+    },
+    "supabase-project": {
+      "name": "supabase-project",
+      "providerName": "Supabase",
+      "serviceId": "project"
     },
     "vercel-plan": {
       "name": "vercel-plan",

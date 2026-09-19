@@ -479,6 +479,17 @@ export function createViewer(
 
   /* ---------------- slots ---------------- */
 
+  /** Size points so they very nearly touch, instead of using a fixed fraction of the scene.
+   *
+   *  A scan is a surface, so N points over a patch of side ~2r sit roughly 2r/sqrt(N) apart.
+   *  Drawing them smaller than that leaves the gaps you see when you zoom in; drawing them at
+   *  about that spacing reads as a continuous surface. The fixed 0.0035·r this replaced was
+   *  tuned against one scene and went sparse on any cloud with fewer points. */
+  function pointSizeFor(radius: number, count: number): number {
+    const spacing = (2 * radius) / Math.sqrt(Math.max(1, count));
+    return clamp(spacing * 1.15, radius * 0.0012, radius * 0.03);
+  }
+
   function targetSlot(): SlotKey {
     // The boot-time synthetic field is provisional: the first real load replaces it, so a
     // user's first .ply lands in A rather than being pushed into B by the safety net.
@@ -543,7 +554,7 @@ export function createViewer(
     const rad = sph && isFinite(sph.radius) && sph.radius > 0 ? sph.radius : 10;
 
     const mat = new THREE.PointsMaterial({
-      size: Math.max(0.004, rad * 0.0035),
+      size: pointSizeFor(rad, res.kept),
       vertexColors: true,
       sizeAttenuation: true,
     });

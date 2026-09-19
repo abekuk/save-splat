@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Viewer } from '@/scene/viewer';
 import type { AppSnapshot } from '@/core/snapshot';
 import { CLS_CSS, DRIFT_BANDS, wellSupported } from '@/core/geometry/extract';
@@ -8,24 +9,42 @@ import type { Plane } from '@/types';
 
 const planeCss = (p: Plane): string => (p.cls === 'wall' && p.band ? p.band.css : CLS_CSS[p.cls]);
 
+/** What the number means, in words. The degrees and the band name are still there under
+ *  DETAILS; this is the line you should be able to read without a key. */
+function verdict(p: Plane): string {
+  const deg = (p.tilt * 180) / Math.PI;
+  if (p.cls === 'wall') {
+    const d = (p.drift ?? 0) * 100;
+    if (d < 0.5) return 'plumb';
+    if (d < 1) return 'barely off plumb';
+    if (d < 2) return 'leaning';
+    return 'leaning badly';
+  }
+  if (p.cls === 'slab') {
+    if (deg < 2) return 'level';
+    if (deg < 6) return 'slightly sloped';
+    return 'sloped';
+  }
+  return 'leaning slab';
+}
+
 function PlaneRow({
   p,
   index,
   mpu,
   selected,
+  details,
   onClick,
 }: {
   p: Plane;
   index: number;
   mpu: number;
   selected: boolean;
+  details: boolean;
   onClick: () => void;
 }) {
   const css = planeCss(p);
-  const sub =
-    p.cls === 'wall'
-      ? `out of plumb ${((p.tilt * 180) / Math.PI).toFixed(2)}° · ${p.band?.name ?? ''}`
-      : `${p.cls === 'slab' ? 'off level' : 'lean-to angle'} from horizontal`;
+  const sub = verdict(p);
   return (
     <div className={selected ? 'grow sel' : 'grow'} data-i={index} onClick={onClick}>
       <div className="top">
@@ -39,11 +58,13 @@ function PlaneRow({
             : `${((p.tilt * 180) / Math.PI).toFixed(1)}°`}
         </span>
       </div>
-      <div className="meta">
-        area {fmtNum(mArea(p.area, mpu))}&nbsp;m² · fill {Math.round(p.fill * 100)}% · support{' '}
-        {(p.support * 100).toFixed(1)}% · rms {fmtNum(mLen(p.rms, mpu), 3)}&nbsp;m · n [
-        {p.n.map((v) => v.toFixed(2)).join(' ')}]
-      </div>
+      {details && (
+        <div className="meta">
+          {p.cls === 'wall' ? `${((p.tilt * 180) / Math.PI).toFixed(2)}° off plumb · ` : ''}
+          area {fmtNum(mArea(p.area, mpu))}&nbsp;m² · fill {Math.round(p.fill * 100)}% · support{' '}
+          {(p.support * 100).toFixed(1)}% · rms {fmtNum(mLen(p.rms, mpu), 3)}&nbsp;m
+        </div>
+      )}
     </div>
   );
 }
@@ -58,6 +79,7 @@ export default function GeoTab({
   onGeometry: () => void;
 }) {
   const s = useAppState();
+  const [details, setDetails] = useState(false);
   const g = snap.geom;
   const mpu = snap.metresPerUnit;
 
@@ -109,101 +131,115 @@ export default function GeoTab({
 
   return (
     <>
+      <div className="gverdict" style={{ borderColor: worst?.band?.css ?? 'var(--line)' }}>
+        <b style={{ color: worst?.band?.css ?? 'var(--fg)' }}>
+          {worst?.band?.name ?? 'NO WALLS FOUND'}
+        </b>
+        <span>
+          {worst?.drift != null
+            ? `worst wall ${(worst.drift * 100).toFixed(1)}% off plumb`
+            : 'nothing vertical enough to measure'}
+        </span>
+      </div>
+
       <div className="gsum">
-        <div>
-          <span>PLANES</span>
-          <b>{g.planes.length}</b>
-        </div>
         <div>
           <span>WALLS</span>
           <b>{walls.length}</b>
         </div>
         <div>
-          <span>SLABS</span>
+          <span>FLOORS</span>
           <b>{slabs.length}</b>
         </div>
         <div>
-          <span>INCLINED</span>
-          <b>{incl.length}</b>
-        </div>
-      </div>
-      <div className="gsum">
-        <div>
-          <span>WORST DRIFT</span>
-          <b style={{ color: worst?.band?.css ?? '#8b93a1' }}>
-            {worst?.drift != null ? `${(worst.drift * 100).toFixed(2)}%` : '—'}
-          </b>
-        </div>
-        <div>
-          <span>DEBRIS VOL</span>
+          <span>DEBRIS</span>
           <b>{fmtNum(mVol(g.debris.totalVolume, mpu))} m³</b>
         </div>
-        <div>
-          <span>UNASSIGNED</span>
-          <b>{Math.round(g.residualFrac * 100)}%</b>
-        </div>
-        <div>
-          <span>FIT TIME</span>
-          <b>{g.ms} ms</b>
-        </div>
       </div>
 
-      <div className="scalebox">
-        <label htmlFor="f-scale">1 SCAN UNIT =</label>
-        <input
-          id="f-scale"
-          type="number"
-          min={0.0001}
-          step={0.01}
-          value={mpu}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value);
-            setState({ metresPerUnit: isFinite(v) && v > 0 ? v : 1 });
-          }}
-        />
-        <label>METRES</label>
-      </div>
-      <details className="gnote-details">
-        <summary>how to read these numbers</summary>
-        <div className="gnote">
-          Worst drift counts only walls holding at least 1% of the cloud at 25% fill or better;
-          thinner fragments still appear in the list, with their support and fill shown.{' '}
-          {fmtInt(g.workingSet)} points fitted · epsilon from{' '}
-          {g.usedCovariance
-            ? 'each Gaussian’s own extent along the normal (n′Σn)'
-            : 'scene scale — this cloud carries no scale_*/rot_*, so there is no per-point covariance'}
-          {g.droppedDiffuse > 0 ? (
-            <>
-              {' · '}
-              <b>{g.droppedDiffuse}</b> fit{g.droppedDiffuse === 1 ? '' : 's'} discarded as too
-              diffuse to draw — their points were spread too thin across the patch to represent as a
-              surface
-            </>
-          ) : null}
-        </div>
-        <div className="gnote">
-          Angles and drift ratios are scale-free and hold whatever this is set to. Areas and volumes
-          do not — they are only metric if this figure is right. ARKit-derived exports (Scaniverse,
-          Polycam) are usually already 1 unit = 1 m.
-        </div>
-      </details>
+      <button className="btn gtoggle" onClick={() => setDetails(!details)}>
+        {details ? '− hide the numbers' : '+ show the numbers'}
+      </button>
 
-      <div className="legend">
-        {[...DRIFT_BANDS].reverse().map((b) => (
-          <span key={b.name}>
-            <i style={{ background: b.css }} />
-            {b.name}
-          </span>
-        ))}
-        <span>
-          <i style={{ background: CLS_CSS.slab }} />
-          SLAB
-        </span>
-        <span>
-          <i style={{ background: CLS_CSS.incline }} />
-          INCLINED
-        </span>
-      </div>
+      {details && (
+        <>
+          <div className="gsum">
+            <div>
+              <span>PLANES</span>
+              <b>{g.planes.length}</b>
+            </div>
+            <div>
+              <span>INCLINED</span>
+              <b>{incl.length}</b>
+            </div>
+            <div>
+              <span>UNASSIGNED</span>
+              <b>{Math.round(g.residualFrac * 100)}%</b>
+            </div>
+            <div>
+              <span>FIT TIME</span>
+              <b>{g.ms} ms</b>
+            </div>
+          </div>
+
+          <div className="scalebox">
+            <label htmlFor="f-scale">1 SCAN UNIT =</label>
+            <input
+              id="f-scale"
+              type="number"
+              min={0.0001}
+              step={0.01}
+              value={mpu}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setState({ metresPerUnit: isFinite(v) && v > 0 ? v : 1 });
+              }}
+            />
+            <label>METRES</label>
+          </div>
+          <details className="gnote-details">
+            <summary>how to read these numbers</summary>
+            <div className="gnote">
+              Worst drift counts only walls holding at least 1% of the cloud at 25% fill or better;
+              thinner fragments still appear in the list, with their support and fill shown.{' '}
+              {fmtInt(g.workingSet)} points fitted · epsilon from{' '}
+              {g.usedCovariance
+                ? 'each Gaussian’s own extent along the normal (n′Σn)'
+                : 'scene scale — this cloud carries no scale_*/rot_*, so there is no per-point covariance'}
+              {g.droppedDiffuse > 0 ? (
+                <>
+                  {' · '}
+                  <b>{g.droppedDiffuse}</b> fit{g.droppedDiffuse === 1 ? '' : 's'} discarded as too
+                  diffuse to draw — their points were spread too thin across the patch to represent
+                  as a surface
+                </>
+              ) : null}
+            </div>
+            <div className="gnote">
+              Angles and drift ratios are scale-free and hold whatever this is set to. Areas and
+              volumes do not — they are only metric if this figure is right. ARKit-derived exports
+              (Scaniverse, Polycam) are usually already 1 unit = 1 m.
+            </div>
+          </details>
+
+          <div className="legend">
+            {[...DRIFT_BANDS].reverse().map((b) => (
+              <span key={b.name}>
+                <i style={{ background: b.css }} />
+                {b.name}
+              </span>
+            ))}
+            <span>
+              <i style={{ background: CLS_CSS.slab }} />
+              SLAB
+            </span>
+            <span>
+              <i style={{ background: CLS_CSS.incline }} />
+              INCLINED
+            </span>
+          </div>
+        </>
+      )}
 
       <div className="ghead">WALLS — VERTICALITY</div>
       {!sortedWalls.length && <div className="gempty">No near-vertical planes found.</div>}
@@ -214,6 +250,7 @@ export default function GeoTab({
           index={g.planes.indexOf(p)}
           mpu={mpu}
           selected={s.selectedPlane === g.planes.indexOf(p)}
+          details={details}
           onClick={() => pick(p)}
         />
       ))}
@@ -227,6 +264,7 @@ export default function GeoTab({
           index={g.planes.indexOf(p)}
           mpu={mpu}
           selected={s.selectedPlane === g.planes.indexOf(p)}
+          details={details}
           onClick={() => pick(p)}
         />
       ))}

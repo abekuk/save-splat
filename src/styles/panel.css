@@ -891,3 +891,37 @@ input[type='range'] {
 .lim-details[open] summary::before {
   content: '▾ ';
 }
+
+/* ---------- GEO verdict ----------
+   The panel led with eight numeric tiles, which buries the one thing an operator needs to
+   read at a glance. This is that thing; the numbers move behind a toggle. */
+.gverdict {
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: 4px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--panel2);
+}
+.gverdict b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.1em;
+}
+.gverdict span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--dim);
+  margin-top: 3px;
+}
+.gtoggle {
+  width: 100%;
+  margin-bottom: 10px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.gsum {
+  margin-bottom: 8px;
+}
