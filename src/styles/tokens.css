@@ -1,0 +1,14 @@
+:root{
+  --bg:#0a0c10; --panel:#15181d; --panel2:#1b1f26; --sunk:#101319; --line:#2a2f38;
+  --fg:#e6e9ee; --dim:#8b93a1; --accent:#ff6b35; --amber:#ffb020;
+  --r1:#ff3b30; --r2:#ff8a1f; --r3:#ffc21f;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:13px;overflow:hidden;
+     -webkit-text-size-adjust:100%}
+#root{height:100%}
+#app{display:flex;height:100%;width:100%}

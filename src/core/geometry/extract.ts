@@ -648,6 +648,12 @@ export function extractGeometry(
 
 
 /* ---------- geometry attached to a site (evidence, not a slider value) ---------- */
+/** A sliver caught at a steep angle produces a huge drift ratio off almost no material.
+ *  Those stay in the list with their support and fill on show, but must not set the headline. */
+export function wellSupported(planes: Plane[]): Plane[] {
+  return planes.filter((p) => p.support >= 0.01 && p.fill >= 0.25);
+}
+
 /* ---------- geometry attached to a site (evidence, not a slider value) ---------- */
 export function nearestPlane(
   site: { pos: Vec3 },

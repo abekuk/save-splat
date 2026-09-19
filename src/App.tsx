@@ -1,0 +1,194 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createViewer } from '@/scene/viewer';
+import type { Viewer } from '@/scene/viewer';
+import { extractGeometry } from '@/core/geometry/extract';
+import { ranked } from '@/core/ranking';
+import { loadPlyFile } from '@/core/ply/load';
+import { makeSynthetic } from '@/core/synthetic';
+import {
+  addSite, getState, selectSite, setHint, setState, setStatus, useAppState,
+} from '@/state/store';
+import TopBar from '@/components/TopBar';
+import LoadOverlay from '@/components/LoadOverlay';
+import Panel from '@/components/Panel';
+
+export default function App() {
+  const viewRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const labelsRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<Viewer | null>(null);
+  const [ready, setReady] = useState(false);
+  const s = useAppState();
+
+  /* ---- viewer lifecycle ---- */
+  useEffect(() => {
+    if (!canvasRef.current || !viewRef.current || !labelsRef.current) return;
+    const v = createViewer(canvasRef.current, viewRef.current, labelsRef.current, {
+      onStatus: setStatus,
+      onHint: setHint,
+      onSitePlaced: (pos) => addSite(pos),
+      onSelectSite: (id) => selectSite(id),
+      onSelectPlane: (i) => setState({ selectedPlane: i, tab: 'geo' }),
+      onMarkModeChange: (on) => setState({ markMode: on }),
+      onSlotsChanged: () => setState((st) => ({ slotsVersion: st.slotsVersion + 1 })),
+    });
+    viewerRef.current = v;
+    setReady(true);
+
+    // The synthetic field auto-loads so the app is never a blank screen on open. It is
+    // provisional: the first real .ply replaces it rather than being pushed into slot B.
+    const t = window.setTimeout(() => {
+      if (!v.getSlot('A') && !v.getSlot('B')) {
+        try {
+          v.installCloud(makeSynthetic(), 'synthetic rubble field', 0, true);
+          setStatus('synthetic rubble field loaded — press m and click a structure to place the first site');
+        } catch (err) {
+          console.error(err);
+        }
+      }
+    }, 60);
+
+    return () => {
+      window.clearTimeout(t);
+      v.dispose();
+      viewerRef.current = null;
+      setReady(false);
+    };
+  }, []);
+
+  /* ---- keep viewer markers in step with the store ---- */
+  useEffect(() => {
+    const ranks = new Map(ranked(s.sites).map((x, i) => [x.id, i + 1] as const));
+    viewerRef.current?.syncSites(s.sites, s.selectedId, ranks);
+  }, [s.sites, s.selectedId]);
+
+  /* ---- loading ---- */
+  const load = useCallback((file: File) => {
+    const v = viewerRef.current;
+    if (!v) return;
+    if (getState().loading) {
+      setStatus('already loading a scan — let it finish first');
+      return;
+    }
+    setState({ loadFile: `${file.name}`, loading: { phase: 'reading', frac: 0, message: 'opening …' } });
+    void loadPlyFile(file, {
+      onProgress: (p) => setState({ loading: p }),
+      onDone: (res) => {
+        try {
+          v.installCloud(res, file.name, null);
+        } catch (err) {
+          console.error(err);
+          setState({ loading: null });
+          setStatus(`could not build the point cloud: ${(err as Error).message}`);
+          return;
+        }
+        setState({ loading: null, selectedPlane: -1 });
+      },
+      onFail: (msg, err) => {
+        if (err) console.error(err);
+        setState({ loading: null });
+        setStatus(`load failed: ${msg}`);
+        window.alert(
+          `Could not load "${file.name}".\n\n${msg}\n\n` +
+            'Rubble reads point/splat .ply files (Scaniverse, Polycam, gaussian-splat exports). ' +
+            'A mesh-only .ply with no vertex coordinates, or a file that is not a .ply at all, will fail here.',
+        );
+      },
+      confirmLarge: (msg) => window.confirm(msg),
+      onCancel: () => {
+        setState({ loading: null });
+        setStatus(`cancelled — ${file.name} was not loaded`);
+      },
+    });
+  }, []);
+
+  /* ---- geometry ---- */
+  const runGeometry = useCallback(() => {
+    const v = viewerRef.current;
+    if (!v) return;
+    const input = v.getExtractInput();
+    if (!input) {
+      setStatus(`slot ${v.getActiveSlot()} is empty — load a scan before extracting geometry`);
+      return;
+    }
+    if (getState().geoStage === 'ransac' || getState().geoStage === 'prep') return;
+    setState({ geoStage: 'prep', geoProgress: null, selectedPlane: -1, tab: 'geo' });
+    v.setGeom(null);
+    extractGeometry(
+      input,
+      (planes, stage, frac) => setState({ geoStage: 'ransac', geoProgress: { planes, stage, frac } }),
+      (g) => {
+        v.setGeom(g);
+        setState({ geoStage: 'done', geoProgress: null });
+        const walls = g.planes.filter((p) => p.cls === 'wall');
+        const worst = walls.reduce((m, p) => Math.max(m, p.drift ?? 0), 0);
+        setStatus(
+          `${g.planes.length} planes in ${g.ms} ms · ${walls.length} wall${walls.length === 1 ? '' : 's'}` +
+            (walls.length ? ` · worst drift ${(worst * 100).toFixed(1)}%` : ''),
+        );
+      },
+      (err) => {
+        console.error(err);
+        setState({ geoStage: 'failed', geoProgress: null });
+        setStatus(`geometry failed: ${err.message}`);
+      },
+    );
+  }, []);
+
+  /* ---- keyboard ---- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+        if (e.key === 'Escape') t.blur();
+        return;
+      }
+      const v = viewerRef.current;
+      if (!v) return;
+      if (e.key === 'm' || e.key === 'M') v.setMarkMode(!v.isMarkMode());
+      else if (e.key === 'Escape') {
+        if (v.isMarkMode()) {
+          v.setMarkMode(false);
+          setStatus('marking cancelled');
+        }
+      } else if (e.key === 'f' || e.key === 'F') {
+        const r = v.cycleOrientation();
+        if (r) {
+          if (r.clearedGeometry) setState({ geoStage: 'idle', selectedPlane: -1 });
+          setStatus(
+            `slot ${v.getActiveSlot()} up-axis ${r.name}` +
+              (r.clearedGeometry ? ' — extracted geometry cleared, re-run GEOMETRY' : '') +
+              ' — if the scene is mirrored rather than inverted that is a handedness issue, not this rotation',
+          );
+        }
+      } else if (e.key === 'g' || e.key === 'G') runGeometry();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [runGeometry]);
+
+  const onDrop = (e: React.DragEvent): void => {
+    e.preventDefault();
+    const f = e.dataTransfer?.files?.[0];
+    if (f) load(f);
+  };
+
+  return (
+    <div id="app">
+      <div
+        id="view"
+        ref={viewRef}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={onDrop}
+      >
+        <canvas id="gl" ref={canvasRef} />
+        <div id="labels" ref={labelsRef} />
+        <TopBar viewer={viewerRef.current} ready={ready} onLoadFile={load} onGeometry={runGeometry} />
+        <div id="statusbar">{s.status}</div>
+        <div id="hintbar" className={s.hint ? 'on' : undefined}>{s.hint}</div>
+        <LoadOverlay progress={s.loading} file={s.loadFile} />
+      </div>
+      <Panel viewer={viewerRef.current} onGeometry={runGeometry} />
+    </div>
+  );
+}
