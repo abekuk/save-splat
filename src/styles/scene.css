@@ -4,7 +4,7 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  background: radial-gradient(1100px 760px at 50% 34%, #141821 0%, #07080b 72%);
+  background: radial-gradient(1100px 760px at 50% 34%, var(--scene-1) 0%, var(--scene-2) 78%);
 }
 canvas#gl {
   display: block;
@@ -36,9 +36,9 @@ body.marking canvas#gl {
   padding: 3px 6px;
   border-radius: 3px;
   white-space: nowrap;
-  background: rgba(10, 12, 16, 0.86);
-  border: 1px solid var(--accent);
-  color: var(--accent);
+  background: var(--veil);
+  border: 1px solid var(--marker);
+  color: var(--marker);
   user-select: none;
 }
 .label.low {
@@ -46,14 +46,14 @@ body.marking canvas#gl {
   color: var(--amber);
 }
 .label.sel {
-  background: var(--accent);
-  color: #0a0c10;
-  border-color: #fff;
+  background: var(--marker);
+  color: #fff;
+  border-color: var(--marker);
 }
 .label.low.sel {
   background: var(--amber);
-  color: #0a0c10;
-  border-color: #fff;
+  color: #fff;
+  border-color: var(--amber);
 }
 
 #topbar {
@@ -66,7 +66,7 @@ body.marking canvas#gl {
   align-items: center;
   flex-wrap: wrap;
   padding: 8px 10px;
-  background: linear-gradient(180deg, rgba(10, 12, 16, 0.92), rgba(10, 12, 16, 0));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0));
   pointer-events: none;
 }
 #topbar > * {
@@ -99,7 +99,7 @@ body.marking canvas#gl {
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--dim);
-  background: rgba(8, 10, 14, 0.78);
+  background: var(--veil);
   border: 1px solid var(--line);
   padding: 5px 8px;
   border-radius: 3px;
@@ -111,8 +111,8 @@ body.marking canvas#gl {
   font-family: var(--mono);
   font-size: 10.5px;
   color: var(--accent);
-  background: rgba(8, 10, 14, 0.82);
-  border: 1px solid var(--accent);
+  background: var(--veil);
+  border: 1px solid var(--marker);
   padding: 5px 8px;
   border-radius: 3px;
   display: none;
@@ -128,7 +128,7 @@ body.marking canvas#gl {
   top: 50%;
   transform: translate(-50%, -50%);
   width: min(430px, calc(100% - 32px));
-  background: rgba(12, 15, 20, 0.96);
+  background: rgba(255, 255, 255, 0.97);
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 14px 15px;

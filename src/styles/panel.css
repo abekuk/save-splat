@@ -1,6 +1,6 @@
 /* ---------- buttons ---------- */
 .btn {
-  background: #1b1f26;
+  background: var(--panel2);
   border: 1px solid var(--line);
   color: var(--fg);
   font-family: var(--mono);
@@ -12,7 +12,7 @@
   white-space: nowrap;
 }
 .btn:hover {
-  border-color: #3d4652;
+  border-color: var(--line-strong);
 }
 .btn em {
   font-style: normal;
@@ -22,19 +22,19 @@
 .btn.on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0a0c10;
+  color: var(--on-accent);
 }
 .btn.on em {
-  color: rgba(10, 12, 16, 0.65);
+  color: rgba(255, 255, 255, 0.7);
 }
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #0a0c10;
+  color: var(--on-accent);
   font-weight: 600;
 }
 .btn.danger {
-  color: #ff6b6b;
+  color: #b91c1c;
 }
 .btn.slot {
   min-width: 34px;
@@ -138,7 +138,7 @@
   border-radius: 2px;
 }
 .qrow:hover {
-  border-color: #3d4652;
+  border-color: var(--line-strong);
 }
 .qrow.rk1 {
   border-left-color: var(--r1);
@@ -150,7 +150,7 @@
   border-left-color: var(--r3);
 }
 .qrow.sel {
-  background: #232833;
+  background: #eef0f2;
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 .qrow.low {
@@ -195,7 +195,7 @@
 .badge {
   font-family: var(--mono);
   font-size: 9px;
-  color: #0a0c10;
+  color: var(--on-accent);
   background: var(--amber);
   padding: 1px 4px;
   border-radius: 2px;
@@ -230,7 +230,7 @@
   margin: 4px 0 7px;
 }
 .note b {
-  color: #c3cad6;
+  color: #3f3f46;
   font-weight: 600;
 }
 input[type='range'] {
@@ -277,7 +277,7 @@ input[type='text']:focus {
 }
 .seg button.on {
   background: var(--accent);
-  color: #0a0c10;
+  color: var(--on-accent);
 }
 .seg button.on.amber {
   background: var(--amber);
@@ -326,7 +326,7 @@ input[type='text']:focus {
 }
 .pane p {
   line-height: 1.55;
-  color: #c3cad6;
+  color: #3f3f46;
   margin: 0 0 9px;
 }
 .formula {
@@ -367,7 +367,7 @@ table.lam td.n {
 ul.lim {
   margin: 0 0 8px;
   padding-left: 16px;
-  color: #c3cad6;
+  color: #3f3f46;
   line-height: 1.55;
 }
 ul.lim li {
@@ -376,10 +376,10 @@ ul.lim li {
 .warn {
   border: 1px solid var(--amber);
   border-left-width: 3px;
-  background: rgba(255, 176, 32, 0.07);
+  background: #fffbeb;
   padding: 9px 10px;
   border-radius: 3px;
-  color: #e8d5b5;
+  color: #713f12;
   line-height: 1.5;
   font-size: 12px;
 }
@@ -398,9 +398,9 @@ ul.lim li {
   padding: 2px 4px;
   border-radius: 2px;
   white-space: nowrap;
-  background: rgba(10, 12, 16, 0.74);
-  border: 1px solid #8b93a1;
-  color: #8b93a1;
+  background: var(--veil);
+  border: 1px solid var(--dim);
+  color: var(--dim);
   user-select: none;
   letter-spacing: 0.04em;
 }
@@ -464,7 +464,7 @@ ul.lim li {
   cursor: pointer;
 }
 .grow:hover {
-  border-color: #3d4652;
+  border-color: var(--line-strong);
 }
 .grow.sel {
   box-shadow: inset 0 0 0 1px var(--accent);
@@ -480,7 +480,7 @@ ul.lim li {
 .grow .tag {
   font-family: var(--mono);
   font-size: 9.5px;
-  border: 1px solid;
+  border: 1px solid currentColor;
   border-radius: 2px;
   padding: 1px 4px;
   flex: 0 0 auto;
@@ -579,7 +579,7 @@ ul.lim li {
   margin: 0 0 12px;
   font-size: 11px;
   line-height: 1.5;
-  color: #c3cad6;
+  color: #3f3f46;
 }
 .evbox .t {
   font-family: var(--mono);
@@ -636,7 +636,7 @@ ul.lim li {
 }
 .sagent .q {
   font-size: 11px;
-  color: #c3cad6;
+  color: #3f3f46;
   line-height: 1.5;
   margin-top: 5px;
 }
@@ -663,7 +663,7 @@ ul.lim li {
   border-style: solid;
   border-left: 3px solid var(--accent);
   background: var(--sunk);
-  color: #c3cad6;
+  color: #3f3f46;
 }
 .sbtn {
   margin-top: 7px;
@@ -701,25 +701,43 @@ ul.lim li {
   margin-right: 6px;
   cursor: pointer;
 }
-.brand:hover { color: #ff8a5c; }
+.brand:hover {
+  color: var(--dim);
+}
 
-#panel { background: #131519; }
-#tabs { border-bottom: 1px solid var(--line); }
-#tabs button { padding: 12px 1px; }
-.pane { padding: 14px 14px 20px; }
+#panel {
+  background: var(--panel);
+}
+#tabs {
+  border-bottom: 1px solid var(--line);
+}
+#tabs button {
+  padding: 12px 1px;
+}
+.pane {
+  padding: 14px 14px 20px;
+}
 
 .qrow,
 .grow,
 .sagent {
   border: 1px solid transparent;
-  background: #191c22;
+  background: var(--panel2);
   border-radius: 4px;
 }
-.qrow { border-left: 3px solid #2a2f38; }
+.qrow {
+  border-left: 3px solid var(--line-strong);
+}
 .qrow:hover,
-.grow:hover { border-color: #333a45; background: #1d2128; }
+.grow:hover {
+  border-color: var(--line-strong);
+  background: #f2f2f3;
+}
 .qrow.sel,
-.grow.sel { background: #212630; box-shadow: inset 0 0 0 1px var(--accent); }
+.grow.sel {
+  background: #eef0f2;
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 
 .readout,
 .sctx,
@@ -729,6 +747,58 @@ ul.lim li {
   border-radius: 4px;
 }
 
-.btn { border-radius: 5px; }
-.seg { border-radius: 5px; }
-#exports { padding: 10px; }
+.btn {
+  border-radius: 5px;
+}
+.seg {
+  border-radius: 5px;
+}
+#exports {
+  padding: 10px;
+}
+
+/* ---------- light-theme contrast ----------
+   The ported chrome assumed a near-black panel; these are the places where a token
+   swap alone was not enough. */
+.btn {
+  border-color: var(--line-strong);
+}
+.btn:hover {
+  background: #f0f0f1;
+  border-color: #b8b8b8;
+}
+#tabs button {
+  color: var(--dim);
+}
+#tabs button.on {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+}
+.seg button {
+  color: var(--dim);
+}
+.seg button.on {
+  background: var(--fg);
+  color: var(--on-accent);
+}
+.seg button.on.amber {
+  background: var(--amber);
+}
+.badge {
+  color: var(--on-accent);
+}
+.qrow .rho {
+  color: var(--fg);
+}
+.qrow.low .rho {
+  color: var(--amber);
+}
+.readout .big {
+  color: var(--fg);
+}
+.readout .big.amber {
+  color: var(--amber);
+}
+input[type='range'] {
+  accent-color: var(--fg);
+}

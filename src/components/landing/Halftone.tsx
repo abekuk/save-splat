@@ -25,6 +25,10 @@ interface Sample {
    *  its own walls. Computed per segment — deriving it from y alone gives the basin a
    *  negative height, which floods the whole interior black. */
   ao: number;
+  /** multiplies dot size. The base of the outer wall sits at full ink and fuses into a
+   *  solid black band with a hard bottom edge; fading it lets the form dissolve into
+   *  dots the way the silhouette does. */
+  fade: number;
 }
 
 const R = 1; // outer radius
@@ -37,7 +41,7 @@ const PITCH = 0.0155;
 /** floor on the shading, so unlit faces still carry tone rather than going flat black */
 const AMBIENT = 0.34;
 /** >1 pushes mid-tones lighter, which is what keeps the basin from filling in */
-const GAMMA = 1.72;
+const GAMMA = 1.55;
 
 /** the profile of the surface of revolution, as a dense polyline in (r, y) with normals */
 interface Prof {
@@ -46,6 +50,7 @@ interface Prof {
   nr: number;
   ny: number;
   ao: number;
+  fade: number;
 }
 
 function profile(): Prof[] {
@@ -54,12 +59,16 @@ function profile(): Prof[] {
   // outer wall, bottom to rim — darkest where it meets the ground
   for (let i = 0; i <= N * 0.22; i++) {
     const a = i / (N * 0.22);
-    pts.push({ r: R, y: H * a, nr: 1, ny: 0, ao: 0.22 + 0.78 * a });
+    // Only the lowest stretch dissolves; above that the wall keeps its full weight, or
+    // the whole form goes weightless and reads as a ghost.
+    const t = Math.min(1, a / 0.55);
+    const f = t * t * (3 - 2 * t);
+    pts.push({ r: R, y: H * a, nr: 1, ny: 0, ao: 0.3 + 0.7 * a, fade: 0.22 + 0.78 * f });
   }
   // flat rim — open, but held down a little so the annulus still reads as a band
   for (let i = 1; i <= N * 0.06; i++) {
     const a = i / (N * 0.06);
-    pts.push({ r: R - (R - RI) * a, y: H, nr: 0, ny: 1, ao: 0.62 });
+    pts.push({ r: R - (R - RI) * a, y: H, nr: 0, ny: 1, ao: 0.62, fade: 1 });
   }
   // paraboloid basin, rim down to centre — partly enclosed by its own walls
   for (let i = 1; i <= N * 0.72; i++) {
@@ -68,7 +77,7 @@ function profile(): Prof[] {
     const y = H - D * (1 - s * s);
     const slope = (2 * D * r) / (RI * RI); // dy/dr
     const L = Math.hypot(slope, 1);
-    pts.push({ r, y, nr: -slope / L, ny: 1 / L, ao: 0.7 + 0.3 * s });
+    pts.push({ r, y, nr: -slope / L, ny: 1 / L, ao: 0.7 + 0.3 * s, fade: 1 });
   }
   return pts;
 }
@@ -104,6 +113,7 @@ function build(pitch: number): Sample[] {
         ny: p.ny,
         nz: p.nr * su,
         ao: p.ao,
+        fade: p.fade,
       });
     }
   }
@@ -111,6 +121,11 @@ function build(pitch: number): Sample[] {
 }
 
 const TILT = 0.62; // camera elevation, radians
+/** how far the cursor swings the spin and lifts the elevation */
+const SWING = 0.5;
+const LIFT = 0.14;
+
+const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
 /* Behind and above. A light from the front would flood the basin white; the reference has
    the far interior dark and the near interior bright, which only happens with a back light. */
 const LIGHT = (() => {
@@ -135,6 +150,20 @@ export default function Halftone({ className }: { className?: string }) {
     let w = 0;
     let h = 0;
     let dpr = 1;
+    let scale = 1;
+
+    /* One scale, held for every frame and sized for the steepest tilt the cursor can
+       reach. The dish's projected height grows with elevation — the rim spreads over
+       2*R*sin(tilt) — so a scale fitted to the resting angle clips once the camera
+       lifts. Refitting per frame cures the clipping but then the object zooms in and
+       out as the pointer moves, which is worse than the problem. Fitting once to the
+       worst case gives a stable size that never clips.
+
+       No allowance is made for the faded base. The fade shrinks those dots but leaves
+       them fully opaque, so they still reach the edge and still clip — measured, after
+       trying exactly that shortcut. */
+    const MAX_TILT = TILT + LIFT;
+    const SPAN_AT_MAX = H * Math.cos(MAX_TILT) + 2 * R * Math.sin(MAX_TILT);
 
     const resize = (): void => {
       const rect = canvas.getBoundingClientRect();
@@ -143,27 +172,46 @@ export default function Halftone({ className }: { className?: string }) {
       h = Math.max(1, rect.height);
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
+      // 0.96 leaves room for the dot radius itself, which spills past the geometry
+      scale = Math.min((w * 0.96) / (2 * R), (h * 0.96) / SPAN_AT_MAX);
     };
     resize();
     window.addEventListener('resize', resize);
 
-    const cosT = Math.cos(TILT);
-    const sinT = Math.sin(TILT);
+    /* Cursor tracking. Measured against the viewport rather than the canvas, so the
+       dish keeps responding when the pointer is nowhere near it, and eased per frame
+       so a fast flick glides instead of snapping. */
+    const target = { x: 0, y: 0 };
+    const eased = { x: 0, y: 0 };
+    const onMove = (e: PointerEvent): void => {
+      const rect = canvas.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      target.x = clamp((e.clientX - cx) / (window.innerWidth / 2), -1, 1);
+      target.y = clamp((e.clientY - cy) / (window.innerHeight / 2), -1, 1);
+    };
+    if (!reduced) window.addEventListener('pointermove', onMove);
+
     const start = performance.now();
 
     const draw = (now: number): void => {
-      const theta = reduced ? 0.6 : ((now - start) / 1000) * 0.13;
+      eased.x += (target.x - eased.x) * 0.055;
+      eased.y += (target.y - eased.y) * 0.055;
+
+      const theta = reduced ? 0.6 : ((now - start) / 1000) * 0.13 + eased.x * SWING;
       const cs = Math.cos(theta);
       const sn = Math.sin(theta);
+      const tilt = clamp(TILT - eased.y * LIFT, 0.26, 1.02);
+      const cosT = Math.cos(tilt);
+      const sinT = Math.sin(tilt);
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const scale = Math.min(w / 2.12, h / 1.32);
       const cx = w / 2;
-      const cy = h / 2 + scale * 0.12;
+      const cy = h / 2 + ((H * cosT) / 2) * scale;
       // let the darkest dots very nearly touch, as a real halftone does
-      const maxR = Math.max(0.55, scale * PITCH * 0.62);
+      const maxR = Math.max(0.55, scale * PITCH * 0.6);
 
       // back to front, so nearer dots sit over farther ones
       const drawn: { sx: number; sy: number; r: number; depth: number }[] = [];
@@ -193,7 +241,7 @@ export default function Halftone({ className }: { className?: string }) {
            crescent. A halftone cell there covers less projected area — area scales with
            |n·view|, so the dot radius scales with its square root. Ink per unit screen
            area then stays put and the edge resolves back into dots. */
-        const r = maxR * Math.pow(dark, GAMMA) * Math.sqrt(nz2);
+        const r = maxR * Math.pow(dark, GAMMA) * Math.sqrt(nz2) * p.fade;
         if (r < 0.1) continue;
 
         drawn.push({ sx: cx + x1 * scale, sy: cy - y2 * scale, r, depth: z2 });
@@ -218,6 +266,7 @@ export default function Halftone({ className }: { className?: string }) {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
+      window.removeEventListener('pointermove', onMove);
     };
   }, []);
 

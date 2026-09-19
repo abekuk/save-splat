@@ -1,6 +1,6 @@
 import type { Viewer } from '@/scene/viewer';
 import type { AppSnapshot } from '@/core/snapshot';
-import { CLS_CSS, wellSupported } from '@/core/geometry/extract';
+import { CLS_CSS, DRIFT_BANDS, wellSupported } from '@/core/geometry/extract';
 import { mArea, mLen, mVol } from '@/core/units';
 import { clamp01, fmtInt, fmtNum } from '@/core/util';
 import { setState, useAppState } from '@/state/store';
@@ -187,30 +187,14 @@ export default function GeoTab({
       </div>
 
       <div className="legend">
-        <span>
-          <i style={{ background: '#ff3b30' }} />
-          SEVERE ≥2%
-        </span>
-        <span>
-          <i style={{ background: '#ff8a1f' }} />
-          MODERATE 1–2%
-        </span>
-        <span>
-          <i style={{ background: '#ffc21f' }} />
-          MINOR 0.5–1%
-        </span>
-        <span>
-          <i style={{ background: '#7d8896' }} />
-          COSMETIC &lt;0.5%
-        </span>
-        <span>
-          <i style={{ background: '#4a9eff' }} />
-          SLAB
-        </span>
-        <span>
-          <i style={{ background: '#35d0c0' }} />
-          INCLINED
-        </span>
+        {[...DRIFT_BANDS].reverse().map((b) => (
+          <span key={b.name}>
+            <i style={{ background: b.css }} />
+            {b.name}
+          </span>
+        ))}
+        <span><i style={{ background: CLS_CSS.slab }} />SLAB</span>
+        <span><i style={{ background: CLS_CSS.incline }} />INCLINED</span>
       </div>
 
       <div className="ghead">WALLS — VERTICALITY</div>
@@ -251,7 +235,7 @@ export default function GeoTab({
       {g.debris.clusters.map((c) => (
         <div className="grow deb" key={c.id}>
           <div className="top">
-            <span className="tag" style={{ borderColor: '#8b93a1', color: '#8b93a1' }}>
+            <span className="tag" style={{ borderColor: 'var(--dim)', color: 'var(--dim)' }}>
               D{c.id}
             </span>
             <span className="nm">debris pile {c.id}</span>

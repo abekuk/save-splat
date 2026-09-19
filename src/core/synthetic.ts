@@ -25,7 +25,10 @@ export function makeSynthetic(): PlyResult {
   }
 
   var v = new THREE.Vector3(), e = new THREE.Euler();
-  var CONCRETE = [0.46, 0.44, 0.41], DUST = [0.50, 0.45, 0.37], WALLC = [0.40, 0.37, 0.34];
+  // Darkened for the light viewer background. These were picked against a near-black
+  // canvas; at the original values the fallback scene washes out on a light ground, and
+  // this scene is the one that has to survive being shown on a projector.
+  var CONCRETE = [0.30, 0.28, 0.26], DUST = [0.34, 0.30, 0.24], WALLC = [0.24, 0.22, 0.20];
 
   // six overlapping thin slabs at varied rotations and heights — collapsed floor plates
   var slabs = [
