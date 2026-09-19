@@ -1,0 +1,177 @@
+/* Landing — light, sparse, and deliberately close to the reference: a single object,
+   thin column rules, and almost nothing else. The app itself stays dark; this is the
+   marketing surface. */
+
+.landing {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  background: #fff;
+  color: #0a0a0a;
+  font-family: var(--sans);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* column rules */
+.rules {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.rules i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #ececec;
+}
+.rules i:nth-child(1) { left: 7.5%; }
+.rules i:nth-child(2) { left: 28%; }
+.rules i:nth-child(3) { right: 28%; }
+.rules i:nth-child(4) { right: 7.5%; }
+
+.lhead,
+.lfoot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26px 34px;
+  flex: 0 0 auto;
+}
+.lhead { border-bottom: 1px solid #ececec; }
+.lfoot {
+  border-top: 1px solid #ececec;
+  font-size: 13px;
+  color: #6b6b6b;
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.wordmark .mk {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #0a0a0a;
+  position: relative;
+  flex: 0 0 auto;
+}
+.wordmark .mk::before,
+.wordmark .mk::after {
+  content: '';
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fff;
+}
+.wordmark .mk::before { left: 4px; top: 4px; box-shadow: 8px 0 0 #fff; }
+.wordmark .mk::after { left: 4px; top: 12px; box-shadow: 8px 0 0 #fff; }
+
+.lhead nav a,
+.lfoot a {
+  color: #6b6b6b;
+  text-decoration: none;
+  font-size: 13px;
+}
+.lhead nav a:hover,
+.lfoot a:hover { color: #0a0a0a; }
+
+.lmain {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 24px 20px;
+}
+
+.hero {
+  display: block;
+  width: min(640px, 82vw);
+  height: min(360px, 42vh);
+  flex: 0 1 auto;
+}
+
+.pitch { text-align: center; max-width: 560px; }
+.pitch h1 {
+  margin: 0;
+  font-size: clamp(20px, 2.6vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+.pitch .sub {
+  margin: 10px auto 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #6b6b6b;
+  max-width: 440px;
+}
+
+.cta {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+.cta button {
+  font-family: inherit;
+  font-size: 13.5px;
+  padding: 10px 18px;
+  border-radius: 7px;
+  cursor: pointer;
+  border: 1px solid #0a0a0a;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.cta .primary { background: #0a0a0a; color: #fff; }
+.cta .primary:hover { background: #2a2a2a; border-color: #2a2a2a; }
+.cta .ghost { background: transparent; color: #6b6b6b; border-color: #dcdcdc; }
+.cta .ghost:hover { color: #0a0a0a; border-color: #0a0a0a; }
+
+.drophint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: #a0a0a0;
+}
+
+/* drag state */
+.dropveil {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.88);
+  border: 2px dashed #0a0a0a;
+  pointer-events: none;
+}
+.landing.over .dropveil { display: flex; }
+.dropveil span {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 760px) {
+  .lhead, .lfoot { padding: 18px 20px; }
+  .rules i:nth-child(2), .rules i:nth-child(3) { display: none; }
+  .hero { height: 34vh; }
+  .lfoot { font-size: 11.5px; gap: 14px; }
+}

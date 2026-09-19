@@ -8,10 +8,12 @@ export default function TopBar({
   viewer,
   onLoadFile,
   onGeometry,
+  onExit,
 }: {
   viewer: Viewer | null;
   onLoadFile: (f: File) => void;
   onGeometry: () => void;
+  onExit: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const s = useAppState();
@@ -49,9 +51,9 @@ export default function TopBar({
 
   return (
     <div id="topbar">
-      <div className="brand">
-        RUBBLE <span>/ triage</span>
-      </div>
+      <button className="brand" onClick={onExit} title="Back to the start">
+        savesplt
+      </button>
 
       <button className="btn" onClick={() => fileRef.current?.click()}>
         LOAD .PLY

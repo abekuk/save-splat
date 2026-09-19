@@ -685,3 +685,50 @@ ul.lim li {
 .sctx b {
   color: var(--fg);
 }
+
+/* ---------- viewer refinement ----------
+   A lighter pass over the ported chrome: the original leaned on a border around every
+   element, which at this density reads as noise. Rows now separate by surface instead,
+   and only the selected one gets an outline. */
+.brand {
+  font-family: var(--mono);
+  letter-spacing: 0.14em;
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 4px 2px;
+  margin-right: 6px;
+  cursor: pointer;
+}
+.brand:hover { color: #ff8a5c; }
+
+#panel { background: #131519; }
+#tabs { border-bottom: 1px solid var(--line); }
+#tabs button { padding: 12px 1px; }
+.pane { padding: 14px 14px 20px; }
+
+.qrow,
+.grow,
+.sagent {
+  border: 1px solid transparent;
+  background: #191c22;
+  border-radius: 4px;
+}
+.qrow { border-left: 3px solid #2a2f38; }
+.qrow:hover,
+.grow:hover { border-color: #333a45; background: #1d2128; }
+.qrow.sel,
+.grow.sel { background: #212630; box-shadow: inset 0 0 0 1px var(--accent); }
+
+.readout,
+.sctx,
+.evbox,
+.formula,
+.gempty {
+  border-radius: 4px;
+}
+
+.btn { border-radius: 5px; }
+.seg { border-radius: 5px; }
+#exports { padding: 10px; }
