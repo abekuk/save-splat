@@ -62,6 +62,12 @@ run and checked without a renderer.
   with the value it replaced. `q` (P trapped alive) has no agent on purpose.
 - Output is a ranked prior for incident command review, not an autonomous dispatch order.
 
+## UN / SDG framing
+
+[PROJECT-BRIEF.md](PROJECT-BRIEF.md) maps the project against the Sendai Framework for Disaster Risk
+Reduction 2015–2030 and the SDG targets, states the limits in full, and lists the questions an
+assessor should ask. It is written to be handed to a reviewer as-is.
+
 ## Conventions
 
 See [AGENTS.md](AGENTS.md) before changing anything — it records which files are verbatim ports
