@@ -11,9 +11,10 @@
 import type { Connect, Plugin } from 'vite';
 import { loadEnv } from 'vite';
 import { hydrateEnv } from './env';
-import { handleRun, handleStatus } from './http';
+import { handleReview, handleRun, handleStatus } from './http';
 import { detectProvider } from './providers';
 import { persistEnabled } from './persist';
+import { athenaConfig } from './env';
 
 function mount(
   middlewares: Connect.Server,
@@ -26,12 +27,14 @@ function mount(
   logger.info(
     provider
       ? `  \x1b[32m➜\x1b[0m  swarm:   ready via ${provider}` +
-          (persistEnabled() ? ', runs logged to supabase' : '')
+          (persistEnabled() ? ', runs logged to supabase' : '') +
+          (athenaConfig() ? ', athena review on' : '')
       : `  \x1b[33m➜\x1b[0m  swarm:   no API key — add OPENROUTER_API_KEY to .env.local ` +
           `(or run \`stripe projects env --pull\`) to enable`,
   );
   middlewares.use('/api/swarm/status', (req, res) => void handleStatus(req, res));
   middlewares.use('/api/swarm/run', (req, res) => void handleRun(req, res));
+  middlewares.use('/api/swarm/review', (req, res) => void handleReview(req, res));
 }
 
 export function swarmPlugin(): Plugin {

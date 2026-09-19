@@ -9,7 +9,7 @@ import { DEFAULTS } from '@/core/ranking';
 import type { LoadProgress } from '@/core/ply/load';
 import type { OverrideEntry, Proposal } from '@/core/swarm/agents';
 import type { SwarmRunResult } from '@/core/swarm/proposal';
-import type { SwarmStatus } from '@/core/swarm/client';
+import type { ReviewResult, SwarmStatus } from '@/core/swarm/client';
 import type { GeoStage, Site, Vec3 } from '@/types';
 
 export type TabKey = 'queue' | 'assess' | 'geo' | 'swarm' | 'model';
@@ -35,6 +35,8 @@ export interface AppState {
     busy: boolean;
     notes: string;
     status: SwarmStatus | null;
+    /** Athena's narrative for the last run; null until it arrives */
+    review: { result: ReviewResult | null; busy: boolean; error: string | null };
   };
   overrideLog: OverrideEntry[];
   /** bumped whenever viewer-owned slot state changes, to re-render readers of it */
@@ -59,7 +61,13 @@ let state: AppState = {
   geoStage: 'idle',
   geoProgress: null,
   proposals: {},
-  swarm: { run: null, busy: false, notes: '', status: null },
+  swarm: {
+    run: null,
+    busy: false,
+    notes: '',
+    status: null,
+    review: { result: null, busy: false, error: null },
+  },
   overrideLog: [],
   slotsVersion: 0,
 };

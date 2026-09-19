@@ -4,6 +4,8 @@
  * the key never leaves the server process are shared.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { reviewRun } from './athena';
+import { athenaConfig } from './env';
 import { runSwarm } from './handler';
 import { persistEnabled, recordRun } from './persist';
 import { detectProvider, getReasoner } from './providers';
@@ -52,7 +54,14 @@ export function json(res: ServerResponse, status: number, body: unknown): void {
 export async function handleStatus(_req: Req, res: ServerResponse): Promise<void> {
   const which = detectProvider();
   if (!which) {
-    json(res, 200, { configured: false, provider: null, model: '', effort: '', persist: false });
+    json(res, 200, {
+      configured: false,
+      provider: null,
+      model: '',
+      effort: '',
+      persist: false,
+      review: reviewStatus(),
+    });
     return;
   }
   try {
@@ -62,6 +71,7 @@ export async function handleStatus(_req: Req, res: ServerResponse): Promise<void
       model: await getReasoner().model(),
       effort: process.env.SWARM_EFFORT ?? 'high',
       persist: persistEnabled(),
+      review: reviewStatus(),
     });
   } catch (err) {
     json(res, 200, {
@@ -70,8 +80,53 @@ export async function handleStatus(_req: Req, res: ServerResponse): Promise<void
       model: '',
       effort: '',
       persist: persistEnabled(),
+      review: reviewStatus(),
       error: err instanceof Error ? err.message : String(err),
     });
+  }
+}
+
+function reviewStatus(): { configured: boolean; publicUrl: string | null } {
+  const a = athenaConfig();
+  return { configured: a !== null, publicUrl: a?.publicUrl ?? null };
+}
+
+/** POST /api/swarm/review — the Athena pass over a finished run. Separate from /run so the
+ *  verdicts render the moment they exist and the narrative arrives after, and so a slow
+ *  reviewer can never push the run itself past the function limit. */
+export async function handleReview(req: Req, res: ServerResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    json(res, 405, { error: 'POST only' });
+    return;
+  }
+  if (!athenaConfig()) {
+    json(res, 503, { error: 'Athena is not configured on this server' });
+    return;
+  }
+  try {
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await bodyOf(req);
+      if (!parsed || typeof parsed !== 'object') throw new Error('not an object');
+      body = parsed as Record<string, unknown>;
+    } catch {
+      json(res, 400, { error: 'request body was not valid JSON' });
+      return;
+    }
+    const run = body.run as { results?: unknown } | undefined;
+    const context = body.context;
+    if (!run || !Array.isArray(run.results) || !context || typeof context !== 'object') {
+      json(res, 400, { error: 'expected { run, context }' });
+      return;
+    }
+    const review = await reviewRun({
+      run: run as never,
+      context: context as Record<string, unknown>,
+      operatorNotes: typeof body.operatorNotes === 'string' ? body.operatorNotes : null,
+    });
+    json(res, 200, review);
+  } catch (err) {
+    json(res, 502, { error: err instanceof Error ? err.message : String(err) });
   }
 }
 

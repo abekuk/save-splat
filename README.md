@@ -40,7 +40,9 @@ src/
   styles/            tokens / scene / panel / responsive
 server/swarm/        the reasoner: prompts → provider call → Zod gate → verifiers. Node only.
   providers/         openrouter | openai | anthropic behind one Reasoner interface
-  http.ts            the two endpoints, mounted by Vite (dev + preview) and by api/
+  athena.ts          the incident reviewer (Athena agent over MCP); advisory prose only
+  persist.ts         optional run log → Postgres (Supabase pooler)
+  http.ts            status / run / review endpoints, mounted by Vite (dev + preview) and by api/
 api/swarm/           Vercel functions — thin wrappers over server/swarm/http.ts
 *.test.ts            vitest, colocated; run in a node env because core has no DOM
 ```
@@ -56,7 +58,8 @@ run and checked without a renderer.
 - A/B scan slots are a visual toggle. No alignment, registration or change detection.
 - The agent swarm is **assisted assessment, not autonomy**. Five agents (one per ranking
   parameter, each with its own evidence source and a deterministic verifier) run server-side
-  against the extracted geometry and return proposals validated by Zod — _rejected_ rather than
+  against the extracted geometry — through the Athena agent Stripe Projects provisioned, by
+  default — and return proposals validated by Zod — _rejected_ rather than
   clamped, because silently turning `n = 500` into `50` launders a reasoning failure into the
   ranking. A proposal is inert until an operator applies it, and every application is logged
   with the value it replaced. `q` (P trapped alive) has no agent on purpose.
@@ -76,14 +79,23 @@ not be "fixed".
 
 ## Running the swarm
 
-The reasoner needs one key, server-side, in `.env.local` (see `.env.example`):
-`OPENROUTER_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`. The model is resolved from the
-account rather than hardcoded; pin it with `SWARM_MODEL`. `/api/swarm/status` reports what is
+`stripe projects env --pull` writes everything the server needs into `.env` (see
+`.env.example`); the Athena agent is the default reasoner. Any of `OPENROUTER_API_API_KEY`,
+`OPENAI_API_KEY` or `ANTHROPIC_API_KEY` plus `SWARM_PROVIDER` swaps it. Models are resolved
+from the account rather than hardcoded; pin one with `SWARM_MODEL`. `/api/swarm/status` reports what is
 configured, and the RUN SWARM button says why it is disabled when nothing is.
+
+## Incident review
+
+After a run, the Athena agent (provisioned through Stripe Projects, reached as a headless MCP
+server) reads the proposals, verdicts and abstentions and writes the paragraph an incident
+commander wants next to the queue: what the ranking rests on, which verifier failed, what to do
+next. It proposes nothing and its text never touches a slider. `/api/swarm/review`.
 
 ## Infrastructure
 
-Provisioning and credentials go through the Stripe Projects CLI — OpenRouter for the
-reasoner, Vercel for hosting, Supabase for an optional append-only run log. See
-[SETUP.md](SETUP.md) for the verified login flow, the provisioning order, and the deploy
-steps; it also corrects three commands from the guide that was circulating.
+Everything the app runs on is provisioned and credentialed through the **Stripe Projects CLI**:
+Athena for the swarm's reasoner and the incident reviewer, Vercel for hosting, Supabase for an
+append-only run log, OpenRouter as an opt-in fallback reasoner. `npm run doctor` pings each one. Stripe takes no payments here; it is the
+provisioning layer. See [SETUP.md](SETUP.md) for the verified login flow, the provisioning
+order, the real env var names, and the deploy steps.
