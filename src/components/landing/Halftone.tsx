@@ -123,7 +123,7 @@ function build(pitch: number): Sample[] {
 const TILT = 0.62; // camera elevation, radians
 /** how far the cursor swings the spin and lifts the elevation */
 const SWING = 0.5;
-const LIFT = 0.26;
+const LIFT = 0.14;
 
 const clamp = (v: number, a: number, b: number): number => Math.min(b, Math.max(a, v));
 /* Behind and above. A light from the front would flood the basin white; the reference has
@@ -150,6 +150,20 @@ export default function Halftone({ className }: { className?: string }) {
     let w = 0;
     let h = 0;
     let dpr = 1;
+    let scale = 1;
+
+    /* One scale, held for every frame and sized for the steepest tilt the cursor can
+       reach. The dish's projected height grows with elevation — the rim spreads over
+       2*R*sin(tilt) — so a scale fitted to the resting angle clips once the camera
+       lifts. Refitting per frame cures the clipping but then the object zooms in and
+       out as the pointer moves, which is worse than the problem. Fitting once to the
+       worst case gives a stable size that never clips.
+
+       No allowance is made for the faded base. The fade shrinks those dots but leaves
+       them fully opaque, so they still reach the edge and still clip — measured, after
+       trying exactly that shortcut. */
+    const MAX_TILT = TILT + LIFT;
+    const SPAN_AT_MAX = H * Math.cos(MAX_TILT) + 2 * R * Math.sin(MAX_TILT);
 
     const resize = (): void => {
       const rect = canvas.getBoundingClientRect();
@@ -158,6 +172,8 @@ export default function Halftone({ className }: { className?: string }) {
       h = Math.max(1, rect.height);
       canvas.width = Math.round(w * dpr);
       canvas.height = Math.round(h * dpr);
+      // 0.96 leaves room for the dot radius itself, which spills past the geometry
+      scale = Math.min((w * 0.96) / (2 * R), (h * 0.96) / SPAN_AT_MAX);
     };
     resize();
     window.addEventListener('resize', resize);
@@ -192,9 +208,8 @@ export default function Halftone({ className }: { className?: string }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const scale = Math.min(w / 2.12, h / 1.32);
       const cx = w / 2;
-      const cy = h / 2 + scale * 0.12;
+      const cy = h / 2 + ((H * cosT) / 2) * scale;
       // let the darkest dots very nearly touch, as a real halftone does
       const maxR = Math.max(0.55, scale * PITCH * 0.6);
 

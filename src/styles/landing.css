@@ -105,8 +105,8 @@
 
 .hero {
   display: block;
-  width: min(900px, 92vw);
-  height: min(520px, 56vh);
+  width: min(1000px, 94vw);
+  height: min(600px, 60vh);
   flex: 0 1 auto;
 }
 
