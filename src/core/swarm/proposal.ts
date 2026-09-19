@@ -48,6 +48,43 @@ export function proposalSchemaFor(param: AgentParam) {
   });
 }
 
+/* What goes on the wire to the model, as distinct from what we accept back.
+ *
+ * OpenAI's strict structured-output subset rejects numeric minimum/maximum, so the wire
+ * schema carries shape and enums only. That is the right split regardless of provider: the
+ * model is told the ranges in its prompt, and the hard check happens here on the way back,
+ * where an out-of-range value is a reasoning failure to surface rather than a number to clamp.
+ */
+const WIRE_VALUES = {
+  n: z.number().int(),
+  r: z.number(),
+  tau: z.number(),
+  type: z.enum(['pancake', 'mixed', 'lean']),
+  conf: z.enum(['low', 'med', 'high']),
+} as const satisfies Record<AgentParam, z.ZodTypeAny>;
+
+export function wireSchemaFor(param: AgentParam) {
+  return z.object({
+    abstain: z.boolean(),
+    value: z.union([WIRE_VALUES[param], z.null()]),
+    self_confidence: SelfConfidence,
+    rationale: z.string(),
+    evidence_used: z.array(z.string()),
+  });
+}
+
+/** The gate. Anything a model hands back passes through here before it is a proposal. */
+export function parseRawProposal(
+  param: AgentParam,
+  raw: unknown,
+): { ok: true; value: RawProposal } | { ok: false; error: string } {
+  const res = proposalSchemaFor(param).safeParse(raw);
+  if (res.success) return { ok: true, value: res.data as RawProposal };
+  const issue = res.error.issues[0];
+  const where = issue?.path.join('.') || '(root)';
+  return { ok: false, error: `${where}: ${issue?.message ?? 'invalid'}` };
+}
+
 export type RawProposal = {
   abstain: boolean;
   value: AgentValue | null;

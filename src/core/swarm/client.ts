@@ -5,18 +5,21 @@ import type { SwarmRunResult } from './proposal';
 
 export interface SwarmStatus {
   configured: boolean;
+  provider?: string | null;
   model: string;
   effort: string;
+  /** set when a key is present but the model could not be resolved for it */
+  error?: string;
 }
 
 /** Whether a reasoner is actually reachable, so the UI can say so before the operator clicks. */
 export async function swarmStatus(): Promise<SwarmStatus> {
   try {
     const res = await fetch('/api/swarm/status');
-    if (!res.ok) return { configured: false, model: '', effort: '' };
+    if (!res.ok) return { configured: false, provider: null, model: '', effort: '' };
     return (await res.json()) as SwarmStatus;
   } catch {
-    return { configured: false, model: '', effort: '' };
+    return { configured: false, provider: null, model: '', effort: '' };
   }
 }
 

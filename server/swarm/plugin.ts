@@ -11,7 +11,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { loadEnv } from 'vite';
-import { DEFAULT_MODEL, runSwarm } from './handler';
+import { runSwarm } from './handler';
+import { detectProvider, getReasoner } from './providers';
 
 const MAX_BODY = 4 * 1024 * 1024; // a context payload with many planes is still small
 
@@ -50,24 +51,44 @@ export function swarmPlugin(): Plugin {
       if (env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_API_KEY) {
         process.env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
       }
-      for (const k of ['SWARM_MODEL', 'SWARM_EFFORT']) {
+      for (const k of ['OPENAI_API_KEY', 'SWARM_PROVIDER', 'SWARM_MODEL', 'SWARM_EFFORT']) {
         if (env[k] && !process.env[k]) process.env[k] = env[k];
       }
 
-      const configured = Boolean(process.env.ANTHROPIC_API_KEY);
+      const provider = detectProvider();
       server.config.logger.info(
-        configured
-          ? `  \x1b[32m➜\x1b[0m  swarm:   ready (${process.env.SWARM_MODEL ?? DEFAULT_MODEL})`
-          : `  \x1b[33m➜\x1b[0m  swarm:   no ANTHROPIC_API_KEY — add it to .env.local to enable`,
+        provider
+          ? `  \x1b[32m➜\x1b[0m  swarm:   ready via ${provider}`
+          : `  \x1b[33m➜\x1b[0m  swarm:   no API key — add OPENAI_API_KEY to .env.local to enable`,
       );
 
       /** Lets the UI say "no key configured" instead of failing on the first click. */
       server.middlewares.use('/api/swarm/status', (_req, res) => {
-        json(res, 200, {
-          configured: Boolean(process.env.ANTHROPIC_API_KEY),
-          model: process.env.SWARM_MODEL ?? DEFAULT_MODEL,
-          effort: process.env.SWARM_EFFORT ?? 'high',
-        });
+        const which = detectProvider();
+        if (!which) {
+          json(res, 200, { configured: false, provider: null, model: '', effort: '' });
+          return;
+        }
+        // resolving the model can mean asking the account what it can run, so report the
+        // failure here rather than letting the first RUN click discover it
+        void (async () => {
+          try {
+            json(res, 200, {
+              configured: true,
+              provider: which,
+              model: await getReasoner().model(),
+              effort: process.env.SWARM_EFFORT ?? 'high',
+            });
+          } catch (err) {
+            json(res, 200, {
+              configured: false,
+              provider: which,
+              model: '',
+              effort: '',
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        })();
       });
 
       server.middlewares.use('/api/swarm/run', (req, res) => {
@@ -100,7 +121,7 @@ export function swarmPlugin(): Plugin {
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             // a missing key is the operator's problem to fix, not a server fault
-            json(res, message.includes('ANTHROPIC_API_KEY') ? 503 : 500, { error: message });
+            json(res, /API_KEY|No API key/.test(message) ? 503 : 500, { error: message });
           }
         })();
       });

@@ -33,7 +33,7 @@ export interface AppState {
     run: SwarmRunResult | null;
     busy: boolean;
     notes: string;
-    status: { configured: boolean; model: string; effort: string } | null;
+    status: { configured: boolean; provider?: string | null; model: string; effort: string; error?: string } | null;
   };
   overrideLog: OverrideEntry[];
   /** bumped whenever viewer-owned slot state changes, to re-render readers of it */

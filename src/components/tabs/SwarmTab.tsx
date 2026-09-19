@@ -244,8 +244,8 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
         </div>
       ) : status ? (
         <div className="gnote">
-          reasoner: {status.model} · effort {status.effort} · runs in the dev server, key never
-          reaches the browser
+          reasoner: {status.provider} · {status.model} · runs in the dev server, key never reaches
+          the browser
         </div>
       ) : null}
 
