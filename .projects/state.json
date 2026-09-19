@@ -15,6 +15,11 @@
     }
   },
   "resources": {
+    "athena-review": {
+      "name": "athena-review",
+      "providerName": "Athena",
+      "serviceId": "agents"
+    },
     "openrouter-api": {
       "name": "openrouter-api",
       "providerName": "OpenRouter",

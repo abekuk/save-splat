@@ -490,6 +490,44 @@ export function createViewer(
     return clamp(spacing * 1.15, radius * 0.0012, radius * 0.03);
   }
 
+  /* Bounds that ignore floaters.
+   *
+   * A real 3DGS scene carries stray gaussians flung far from the subject — background,
+   * sky, reconstruction noise. A true bounding sphere is sized by the worst of them, and
+   * everything downstream is scale-relative: framing puts the subject in a corner, point
+   * size collapses, and the geometry pass derives its plane tolerance from a radius that
+   * is mostly empty space. Taking a high percentile of the distance from the centroid
+   * gives the size of the thing you actually scanned. */
+  function robustBounds(positions: Float32Array): { center: THREE.Vector3; radius: number } {
+    const n = Math.floor(positions.length / 3);
+    const center = new THREE.Vector3();
+    if (!n) return { center, radius: 10 };
+
+    // stride-sample so a huge cloud costs the same as a small one
+    const step = Math.max(1, Math.floor(n / 50000));
+    let cx = 0, cy = 0, cz = 0, count = 0;
+    for (let i = 0; i < n; i += step) {
+      cx += positions[i * 3];
+      cy += positions[i * 3 + 1];
+      cz += positions[i * 3 + 2];
+      count++;
+    }
+    cx /= count; cy /= count; cz /= count;
+
+    const d: number[] = [];
+    for (let i = 0; i < n; i += step) {
+      const dx = positions[i * 3] - cx;
+      const dy = positions[i * 3 + 1] - cy;
+      const dz = positions[i * 3 + 2] - cz;
+      d.push(Math.sqrt(dx * dx + dy * dy + dz * dz));
+    }
+    d.sort((a, b) => a - b);
+    // 95th percentile: keeps the subject, drops the tail of floaters
+    const r = d[Math.min(d.length - 1, Math.floor(d.length * 0.95))] || 10;
+    center.set(cx, cy, cz);
+    return { center, radius: r > 0 ? r : 10 };
+  }
+
   function targetSlot(): SlotKey {
     // The boot-time synthetic field is provisional: the first real load replaces it, so a
     // user's first .ply lands in A rather than being pushed into B by the safety net.
@@ -549,9 +587,9 @@ export function createViewer(
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(res.positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(res.colors, 3));
-    geo.computeBoundingSphere();
-    const sph = geo.boundingSphere;
-    const rad = sph && isFinite(sph.radius) && sph.radius > 0 ? sph.radius : 10;
+    geo.computeBoundingSphere(); // still needed for three's frustum culling
+    const rb = robustBounds(res.positions);
+    const rad = rb.radius;
 
     const mat = new THREE.PointsMaterial({
       size: pointSizeFor(rad, res.kept),
@@ -573,7 +611,7 @@ export function createViewer(
       obj: pts,
       kind: 'points',
       positions: res.positions,
-      center: sph ? sph.center.clone() : new THREE.Vector3(),
+      center: rb.center,
       name,
       kept: res.kept,
       total: res.total,
