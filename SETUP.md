@@ -53,8 +53,7 @@ step, not yet built.
 - `stripe plugin install projects` → v0.41.0
 - Stripe AI skills installed to `~/.claude/skills` via `npx skills add stripe/ai --all -g -y`
 - This repo created private at `github.com/forkiron/save-splat`
-- `.gitignore` covers `.env`, `.env.*` (except `.env.example`), `.projects/state.local.json`,
-  `.projects/vault/`
+- `.gitignore` covers `.env`, `.env.*` (except `.env.example`), `.projects/vault/`
 - Swarm endpoints exist for every host: Vite dev, Vite preview, and `api/swarm/*` on Vercel
 
 ## Step 1 — log in (browser, once)

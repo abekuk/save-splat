@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "project": {
+    "catalog": "prod",
+    "initializedAt": "2026-09-19T17:43:50.468Z",
+    "merchantDisplayName": null,
+    "merchantId": "acct_1UHR42FYZjKhlFYG",
+    "projectId": "project_61VQqG6Mv8kzS86PK16VQp1OJ7A8y3yVkuN1DOPBAPKq",
+    "projectName": "save-splat"
+  },
+  "providers": {
+    "athena": {
+      "accountRequestId": "facctrq_61VQqbtziN2ADwq2f16VQp1OJ7A8y3yVkuN1DOPBAKKm",
+      "configuration": {},
+      "linkedAt": "2026-09-19T18:06:22.678Z",
+      "providerId": "prvdr_61VNueP9cELmCU01Z5DFA",
+      "providerName": "Athena",
+      "redirectUrl": null,
+      "requestedAt": "2026-09-19T18:06:22.678Z",
+      "status": "complete",
+      "providerAccount": {
+        "id": "athena_pacct_6f82c94cacbcb8c48be04a2e",
+        "display_name": "acct_1UHR42FYZjKhlFYG",
+        "primary_email": "abe.j.kuk@gmail.com",
+        "link_action": "created"
+      }
+    },
+    "openrouter": {
+      "accountRequestId": "facctrq_61VQqGtU6kd0FJsPg16VQp1OJ7A8y3yVkuN1DOPBANK4",
+      "configuration": {},
+      "linkedAt": "2026-09-19T17:44:40.705Z",
+      "providerId": "prvdr_61URImmFACEuDHEx651IO",
+      "providerName": "OpenRouter",
+      "redirectUrl": null,
+      "requestedAt": "2026-09-19T17:44:40.705Z",
+      "status": "complete"
+    },
+    "supabase": {
+      "accountRequestId": "facctrq_61VQqHLwSq8VOtT1g16VQp1OJ7A8y3yVkuN1DOPBABMW",
+      "configuration": {},
+      "linkedAt": "2026-09-19T17:45:20.790Z",
+      "providerId": "prvdr_61UIXYHdsyF69pZbG52n2",
+      "providerName": "Supabase",
+      "redirectUrl": null,
+      "requestedAt": "2026-09-19T17:45:20.789Z",
+      "status": "complete"
+    },
+    "vercel": {
+      "accountRequestId": "facctrq_61VQqH6gNw5WVYaxY16VQp1OJ7A8y3yVkuN1DOPBAJeS",
+      "configuration": {},
+      "linkedAt": "2026-09-19T17:44:55.744Z",
+      "providerId": "prvdr_61ULUAr4zlQgZkvXY5LsG",
+      "providerName": "Vercel",
+      "redirectUrl": null,
+      "requestedAt": "2026-09-19T17:44:55.744Z",
+      "status": "complete"
+    }
+  },
+  "resources": {
+    "athena-review": {
+      "configuration": {
+        "name": "savesplat review",
+        "instructions": "You are the incident-review assistant for savesplat, a post-disaster structural triage tool. Operators load a 3D scan of a damaged building; the tool extracts measurable facts (wall out-of-plumb drift ratio, slab and lean-to angles, debris volume above a detected ground plane) and ranks assessment sites by rho = expected lives saved per crew-hour, from n (occupancy), q (P trapped alive), r (P extraction succeeds), tau (crew-hours) and a collapse-type decay rate lambda (pancake 0.35/h, mixed 0.15/h, lean 0.06/h). A five-agent swarm proposes n, r, tau, collapse type and an evidence-confidence flag; each proposal is checked by a deterministic verifier and is inert until an operator applies it. Confidence never enters rho. q has no agent because an exterior scan cannot evidence whether anyone is alive. Your job: explain rankings and swarm run JSON that operators paste to you, point out which verifier failed and why, flag when scale is uncalibrated (areas and volumes are then in scan units; angles still hold), and help draft the incident-command summary. Rules: this is assisted assessment, never an autonomous dispatch order; never invent occupancy or survival figures; prefer saying what evidence is missing over guessing; cite the field names from the JSON you were given. Keep answers short and concrete.",
+        "connect_mcp": "no",
+        "mcp_url": "",
+        "enable_image_generation": "no",
+        "enable_music_generation": "no",
+        "enable_live": "no",
+        "enable_coding": "yes",
+        "enable_deep_research": "no",
+        "enable_google_maps": "no",
+        "starter_1": "Explain this swarm run JSON",
+        "starter_2": "Why did a verifier fail?",
+        "starter_3": "Draft the incident-command summary"
+      },
+      "createdAt": "2026-09-19T18:15:49.999Z",
+      "lastRevealedAt": "2026-09-19T18:15:50.574Z",
+      "lastStatus": "complete",
+      "name": "athena-review",
+      "providerId": "prvdr_61VNueP9cELmCU01Z5DFA",
+      "providerName": "Athena",
+      "resourceId": "fres_61VQql2OfoPzUMXzv16VQp1OJ7A8y3yVkuN1DOPBASxE",
+      "serviceId": "agents"
+    },
+    "openrouter-api": {
+      "configuration": {},
+      "createdAt": "2026-09-19T17:44:47.856Z",
+      "lastRevealedAt": "2026-09-19T17:44:48.172Z",
+      "lastStatus": "complete",
+      "name": "openrouter-api",
+      "providerId": "prvdr_61URImmFACEuDHEx651IO",
+      "providerName": "OpenRouter",
+      "resourceId": "fres_61VQqH0a39SJP3hDp16VQp1OJ7A8y3yVkuN1DOPBAOcC",
+      "serviceId": "api"
+    },
+    "openrouter-plan": {
+      "configuration": {},
+      "createdAt": "2026-09-19T17:44:43.545Z",
+      "lastRevealedAt": "2026-09-19T17:44:43.903Z",
+      "lastStatus": "complete",
+      "name": "openrouter-plan",
+      "providerId": "prvdr_61URImmFACEuDHEx651IO",
+      "providerName": "OpenRouter",
+      "resourceId": "fres_61VQqGvryRKEtFavL16VQp1OJ7A8y3yVkuN1DOPBAK6y",
+      "serviceId": "free"
+    },
+    "supabase-plan": {
+      "configuration": {},
+      "createdAt": "2026-09-19T17:45:44.113Z",
+      "lastRevealedAt": "2026-09-19T17:45:44.564Z",
+      "lastStatus": "complete",
+      "name": "supabase-plan",
+      "providerId": "prvdr_61UIXYHdsyF69pZbG52n2",
+      "providerName": "Supabase",
+      "resourceId": "fres_61VQqHZA8I8PyJYku16VQp1OJ7A8y3yVkuN1DOPBADsu",
+      "serviceId": "free"
+    },
+    "supabase-project": {
+      "configuration": {
+        "name": "save-splat"
+      },
+      "createdAt": "2026-09-19T17:46:16.969Z",
+      "lastRevealedAt": "2026-09-19T17:46:17.409Z",
+      "lastStatus": "complete",
+      "name": "supabase-project",
+      "providerId": "prvdr_61UIXYHdsyF69pZbG52n2",
+      "providerName": "Supabase",
+      "resourceId": "fres_61VQqHzE02BIFw6Je16VQp1OJ7A8y3yVkuN1DOPBA5J2",
+      "serviceId": "project"
+    },
+    "vercel-plan": {
+      "configuration": {},
+      "createdAt": "2026-09-19T17:44:58.110Z",
+      "lastRevealedAt": "2026-09-19T17:44:58.479Z",
+      "lastStatus": "complete",
+      "name": "vercel-plan",
+      "providerId": "prvdr_61ULUAr4zlQgZkvXY5LsG",
+      "providerName": "Vercel",
+      "resourceId": "fres_61VQqHAPJkwKEeUtV16VQp1OJ7A8y3yVkuN1DOPBAQZU",
+      "serviceId": "hobby"
+    },
+    "vercel-project": {
+      "configuration": {
+        "name": "save-splat"
+      },
+      "createdAt": "2026-09-19T17:45:02.597Z",
+      "lastRevealedAt": "2026-09-19T18:47:06.758Z",
+      "lastStatus": "complete",
+      "name": "vercel-project",
+      "providerId": "prvdr_61ULUAr4zlQgZkvXY5LsG",
+      "providerName": "Vercel",
+      "resourceId": "fres_61VQqHEmKeD1CWkuu16VQp1OJ7A8y3yVkuN1DOPBA6zY",
+      "serviceId": "project"
+    }
+  }
+}
