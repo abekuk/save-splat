@@ -1,5 +1,6 @@
-/* Browser side of the seam. Talks to the local dev endpoint, never to Anthropic directly —
- * the key lives in the Vite dev server's Node process and must stay there. */
+/* Browser side of the seam. Talks to /api/swarm on whatever is serving the page — the Vite
+ * dev or preview server locally, a Vercel function deployed — never to a model vendor
+ * directly. The key lives in that server process and must stay there. */
 import type { AgentKey } from './agents';
 import type { SwarmRunResult } from './proposal';
 
@@ -8,6 +9,8 @@ export interface SwarmStatus {
   provider?: string | null;
   model: string;
   effort: string;
+  /** whether runs are being appended to the Supabase log */
+  persist?: boolean;
   /** set when a key is present but the model could not be resolved for it */
   error?: string;
 }
@@ -16,10 +19,11 @@ export interface SwarmStatus {
 export async function swarmStatus(): Promise<SwarmStatus> {
   try {
     const res = await fetch('/api/swarm/status');
-    if (!res.ok) return { configured: false, provider: null, model: '', effort: '' };
+    if (!res.ok)
+      return { configured: false, provider: null, model: '', effort: '', persist: false };
     return (await res.json()) as SwarmStatus;
   } catch {
-    return { configured: false, provider: null, model: '', effort: '' };
+    return { configured: false, provider: null, model: '', effort: '', persist: false };
   }
 }
 

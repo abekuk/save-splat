@@ -198,7 +198,7 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
           disabled={busy || noKey || !site}
           title={
             noKey
-              ? 'no ANTHROPIC_API_KEY on the dev server'
+              ? 'no reasoner key on the server'
               : !site
                 ? 'select a site first'
                 : 'run all five agents'
@@ -233,13 +233,23 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
       </div>
       {noKey ? (
         <div className="gnote" style={{ color: 'var(--amber)' }}>
-          No reasoner reachable. Put <b>ANTHROPIC_API_KEY</b> in <b>.env.local</b> and restart the
-          dev server. The key is read server-side only — it is never bundled into the page.
+          {status?.error ? (
+            <>
+              Reasoner <b>{status.provider}</b> is configured but not usable: {status.error}
+            </>
+          ) : (
+            <>
+              No reasoner reachable. Put <b>OPENROUTER_API_KEY</b> (or OPENAI_API_KEY /
+              ANTHROPIC_API_KEY) in <b>.env.local</b> — <b>stripe projects env --pull</b> writes it
+              — and restart the dev server. Keys are read server-side only and never bundled into
+              the page.
+            </>
+          )}
         </div>
       ) : status ? (
         <div className="gnote">
-          reasoner: {status.provider} · {status.model} · runs in the dev server, key never reaches
-          the browser
+          reasoner: {status.provider} · {status.model} · key never reaches the browser
+          {status.persist ? ' · runs logged to supabase' : ''}
         </div>
       ) : null}
 

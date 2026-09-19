@@ -9,6 +9,7 @@ import { DEFAULTS } from '@/core/ranking';
 import type { LoadProgress } from '@/core/ply/load';
 import type { OverrideEntry, Proposal } from '@/core/swarm/agents';
 import type { SwarmRunResult } from '@/core/swarm/proposal';
+import type { SwarmStatus } from '@/core/swarm/client';
 import type { GeoStage, Site, Vec3 } from '@/types';
 
 export type TabKey = 'queue' | 'assess' | 'geo' | 'swarm' | 'model';
@@ -33,13 +34,7 @@ export interface AppState {
     run: SwarmRunResult | null;
     busy: boolean;
     notes: string;
-    status: {
-      configured: boolean;
-      provider?: string | null;
-      model: string;
-      effort: string;
-      error?: string;
-    } | null;
+    status: SwarmStatus | null;
   };
   overrideLog: OverrideEntry[];
   /** bumped whenever viewer-owned slot state changes, to re-render readers of it */
