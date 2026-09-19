@@ -43,8 +43,8 @@ export function proposalSchemaFor(param: AgentParam) {
     abstain: z.boolean(),
     value: z.union([VALUE_SCHEMAS[param], z.null()]),
     self_confidence: SelfConfidence,
-    rationale: z.string().min(1).max(600),
-    evidence_used: z.array(z.string().min(1).max(200)).max(12),
+    rationale: z.string().min(1).max(RATIONALE_MAX),
+    evidence_used: z.array(z.string().min(1).max(200)).max(CITATIONS_MAX),
   });
 }
 
@@ -73,12 +73,38 @@ export function wireSchemaFor(param: AgentParam) {
   });
 }
 
+export const RATIONALE_MAX = 2000;
+export const CITATIONS_MAX = 16;
+
+/* Strictness has to match what the field is for.
+ *
+ * A value out of range is a reasoning failure and is rejected — n=500 must never reach the
+ * ranking. But `rationale` is display prose and `evidence_used` is a citation list, and
+ * throwing away an otherwise sound proposal because the prose ran long is a category error.
+ * It also punishes the agent for explaining itself, which is the opposite of the incentive
+ * this design wants. Those two are trimmed; everything that bears on the decision stays strict.
+ */
+function sanitize(raw: unknown): unknown {
+  if (raw === null || typeof raw !== 'object') return raw;
+  const o = { ...(raw as Record<string, unknown>) };
+  if (typeof o.rationale === 'string' && o.rationale.length > RATIONALE_MAX) {
+    o.rationale = `${o.rationale.slice(0, RATIONALE_MAX - 1)}…`;
+  }
+  if (Array.isArray(o.evidence_used)) {
+    o.evidence_used = o.evidence_used
+      .filter((e): e is string => typeof e === 'string')
+      .slice(0, CITATIONS_MAX)
+      .map((e) => (e.length > 200 ? e.slice(0, 200) : e));
+  }
+  return o;
+}
+
 /** The gate. Anything a model hands back passes through here before it is a proposal. */
 export function parseRawProposal(
   param: AgentParam,
   raw: unknown,
 ): { ok: true; value: RawProposal } | { ok: false; error: string } {
-  const res = proposalSchemaFor(param).safeParse(raw);
+  const res = proposalSchemaFor(param).safeParse(sanitize(raw));
   if (res.success) return { ok: true, value: res.data as RawProposal };
   const issue = res.error.issues[0];
   const where = issue?.path.join('.') || '(root)';

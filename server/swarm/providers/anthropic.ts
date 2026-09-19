@@ -11,13 +11,40 @@ const DEFAULT_MODEL = 'claude-opus-5';
 export class AnthropicReasoner implements Reasoner {
   readonly name = 'anthropic';
   private client: Anthropic;
+  private resolved: string | null = null;
 
   constructor(apiKey: string) {
     this.client = new Anthropic({ apiKey });
   }
 
-  model(): Promise<string> {
-    return Promise.resolve(process.env.SWARM_MODEL ?? DEFAULT_MODEL);
+  /** Same discipline as the OpenAI side: confirm the account can actually reach the model
+   *  before a run depends on it, so an unavailable id is a clear message at status time
+   *  rather than a 404 five agents deep. */
+  async model(): Promise<string> {
+    if (this.resolved) return this.resolved;
+    const pinned = process.env.SWARM_MODEL;
+    if (pinned) {
+      this.resolved = pinned;
+      return pinned;
+    }
+    let ids: string[] = [];
+    try {
+      const list = await this.client.models.list({ limit: 100 });
+      ids = list.data.map((m) => m.id);
+    } catch {
+      // listing is a convenience, not a requirement — fall back to the default and let
+      // the actual request report the real failure
+      this.resolved = DEFAULT_MODEL;
+      return DEFAULT_MODEL;
+    }
+    if (ids.length === 0 || ids.includes(DEFAULT_MODEL)) {
+      this.resolved = DEFAULT_MODEL;
+      return DEFAULT_MODEL;
+    }
+    throw new ProviderError(
+      `${DEFAULT_MODEL} is not available to this key. Set SWARM_MODEL to one of: ` +
+        `${ids.slice(0, 12).join(', ')}${ids.length > 12 ? ` (+${ids.length - 12} more)` : ''}`,
+    );
   }
 
   async complete(req: ReasonerRequest): Promise<ReasonerResponse> {

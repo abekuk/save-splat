@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { verify, isVerified } from './verify';
-import { resolvePath, proposalSchemaFor } from './proposal';
+import { resolvePath, proposalSchemaFor, parseRawProposal, RATIONALE_MAX, CITATIONS_MAX } from './proposal';
 import type { RawProposal } from './proposal';
 
 const payload: Record<string, unknown> = {
@@ -184,4 +184,33 @@ test('output schema rejects out-of-range values rather than clamping them', () =
   assert.equal(frac.success, false, 'occupancy must be a whole number');
   const ok = S.safeParse({ abstain: false, value: 8, self_confidence: 'high', rationale: 'x', evidence_used: [] });
   assert.equal(ok.success, true);
+});
+
+test('a long rationale is trimmed, not thrown away with the whole proposal', () => {
+  const long = 'x'.repeat(5000);
+  const res = parseRawProposal('type', {
+    abstain: false, value: 'mixed', self_confidence: 'med',
+    rationale: long, evidence_used: ['geometry.planes[0].cls'],
+  });
+  assert.equal(res.ok, true, 'prose length must not cost a sound proposal');
+  if (res.ok) {
+    assert.equal(res.value.rationale.length, RATIONALE_MAX);
+    assert.match(res.value.rationale, /…$/);
+  }
+});
+
+test('an over-long citation list is trimmed rather than rejected', () => {
+  const many = Array.from({ length: 40 }, (_, i) => `geometry.planes[${i}].cls`);
+  const res = parseRawProposal('type', {
+    abstain: false, value: 'mixed', self_confidence: 'med', rationale: 'ok', evidence_used: many,
+  });
+  assert.equal(res.ok, true);
+  if (res.ok) assert.equal(res.value.evidence_used.length, CITATIONS_MAX);
+});
+
+test('but a decision-bearing value is still rejected outright', () => {
+  const res = parseRawProposal('n', {
+    abstain: false, value: 500, self_confidence: 'high', rationale: 'ok', evidence_used: [],
+  });
+  assert.equal(res.ok, false, 'out-of-range values are reasoning failures, not formatting');
 });
