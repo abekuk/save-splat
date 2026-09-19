@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "providers": {
+    "athena": {
+      "name": "Athena"
+    },
+    "openrouter": {
+      "name": "OpenRouter"
+    },
+    "supabase": {
+      "name": "Supabase"
+    },
+    "vercel": {
+      "name": "Vercel"
+    }
+  },
+  "resources": {
+    "athena-review": {
+      "name": "athena-review",
+      "providerName": "Athena",
+      "serviceId": "agents"
+    },
+    "openrouter-api": {
+      "name": "openrouter-api",
+      "providerName": "OpenRouter",
+      "serviceId": "api"
+    },
+    "openrouter-plan": {
+      "name": "openrouter-plan",
+      "providerName": "OpenRouter",
+      "serviceId": "free"
+    },
+    "supabase-plan": {
+      "name": "supabase-plan",
+      "providerName": "Supabase",
+      "serviceId": "free"
+    },
+    "supabase-project": {
+      "name": "supabase-project",
+      "providerName": "Supabase",
+      "serviceId": "project"
+    },
+    "vercel-plan": {
+      "name": "vercel-plan",
+      "providerName": "Vercel",
+      "serviceId": "hobby"
+    },
+    "vercel-project": {
+      "name": "vercel-project",
+      "providerName": "Vercel",
+      "serviceId": "project"
+    }
+  }
+}

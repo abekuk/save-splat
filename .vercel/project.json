@@ -1,0 +1,16 @@
+{
+  "projectId": "prj_ny9nxmCPQlhVri6AKRNJd7OwAwK0",
+  "orgId": "team_OF5T5GaKwHGYJ0KJufEHroxd",
+  "projectName": "save-splat",
+  "settings": {
+    "createdAt": 1789839902178,
+    "framework": "vite",
+    "devCommand": null,
+    "installCommand": null,
+    "buildCommand": null,
+    "outputDirectory": null,
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}

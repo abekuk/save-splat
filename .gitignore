@@ -1,9 +1,12 @@
-# Stripe Projects — credentials, never commit
-.projects/state.local.json
-
 # node
 node_modules/
 .DS_Store
+
+
+# build output
+dist/
+coverage/
+*.tsbuildinfo
 
 .projects/cache
 .projects/vault
@@ -12,8 +15,3 @@ node_modules/
 .env
 .env.*
 !.env.example
-
-# build output
-dist/
-coverage/
-*.tsbuildinfo

@@ -1,5 +1,6 @@
-/* Browser side of the seam. Talks to the local dev endpoint, never to Anthropic directly —
- * the key lives in the Vite dev server's Node process and must stay there. */
+/* Browser side of the seam. Talks to /api/swarm on whatever is serving the page — the Vite
+ * dev or preview server locally, a Vercel function deployed — never to a model vendor
+ * directly. The key lives in that server process and must stay there. */
 import type { AgentKey } from './agents';
 import type { SwarmRunResult } from './proposal';
 
@@ -8,6 +9,10 @@ export interface SwarmStatus {
   provider?: string | null;
   model: string;
   effort: string;
+  /** whether runs are being appended to the Supabase log */
+  persist?: boolean;
+  /** the Athena incident reviewer, if provisioned */
+  review?: { configured: boolean; publicUrl: string | null };
   /** set when a key is present but the model could not be resolved for it */
   error?: string;
 }
@@ -16,10 +21,11 @@ export interface SwarmStatus {
 export async function swarmStatus(): Promise<SwarmStatus> {
   try {
     const res = await fetch('/api/swarm/status');
-    if (!res.ok) return { configured: false, provider: null, model: '', effort: '' };
+    if (!res.ok)
+      return { configured: false, provider: null, model: '', effort: '', persist: false };
     return (await res.json()) as SwarmStatus;
   } catch {
-    return { configured: false, provider: null, model: '', effort: '' };
+    return { configured: false, provider: null, model: '', effort: '', persist: false };
   }
 }
 
@@ -80,6 +86,30 @@ export async function runRoomRemote(args: {
   } catch {
     throw new Error(`room endpoint returned non-JSON (${res.status}): ${text.slice(0, 200)}`);
   }
-  if (!res.ok) throw new Error((body as { error?: string }).error ?? `assessment failed (${res.status})`);
+  if (!res.ok)
+    throw new Error((body as { error?: string }).error ?? `assessment failed (${res.status})`);
   return body as RoomRunResult;
+}
+
+export interface ReviewResult {
+  text: string;
+  agent: string;
+  publicUrl: string | null;
+  ms: number;
+}
+
+/** Athena's pass over a finished run. Advisory prose only; it proposes nothing. */
+export async function requestReview(args: {
+  run: SwarmRunResult;
+  context: unknown;
+  operatorNotes?: string | null;
+}): Promise<ReviewResult> {
+  const res = await fetch('/api/swarm/review', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  const body = (await res.json().catch(() => ({}))) as Partial<ReviewResult> & { error?: string };
+  if (!res.ok) throw new Error(body.error ?? `review request failed (${res.status})`);
+  return body as ReviewResult;
 }

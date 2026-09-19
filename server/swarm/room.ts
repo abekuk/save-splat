@@ -6,7 +6,13 @@
  * what is wrong with them. Everything else — the condition, the cross-check between the two
  * sources, the confidence — is computed from what they each returned.
  */
-import { DEFECTS_PROMPT, DefectReportWireSchema, citationCheck, parseDefectReport, qualityCheck } from '../../src/core/swarm/defects';
+import {
+  DEFECTS_PROMPT,
+  DefectReportWireSchema,
+  citationCheck,
+  parseDefectReport,
+  qualityCheck,
+} from '../../src/core/swarm/defects';
 import type { DefectReport } from '../../src/core/swarm/defects';
 import type { Verdict } from '../../src/core/swarm/proposal';
 import { getReasoner } from './providers';
@@ -43,7 +49,10 @@ function toImage(src: string): ReasonerImage | null {
 
 export async function runRoom(opts: RoomRunOptions): Promise<RoomRunResult> {
   const started = Date.now();
-  const images = opts.images.slice(0, MAX_VIEWS).map(toImage).filter((i): i is ReasonerImage => !!i);
+  const images = opts.images
+    .slice(0, MAX_VIEWS)
+    .map(toImage)
+    .filter((i): i is ReasonerImage => !!i);
   const base: RoomRunResult = {
     generated: new Date().toISOString(),
     model: '',
@@ -91,7 +100,11 @@ export async function runRoom(opts: RoomRunOptions): Promise<RoomRunResult> {
     const qual = qualityCheck(report);
     const verdicts: Verdict[] = [
       { check: 'defects cite a view', status: cite.ok ? 'pass' : 'fail', detail: cite.detail },
-      { check: 'claims match capture quality', status: qual.ok ? 'pass' : 'fail', detail: qual.detail },
+      {
+        check: 'claims match capture quality',
+        status: qual.ok ? 'pass' : 'fail',
+        detail: qual.detail,
+      },
     ];
 
     return {

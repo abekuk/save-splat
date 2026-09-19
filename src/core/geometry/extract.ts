@@ -710,8 +710,14 @@ export function extractGeometry(
 /** A sliver caught at a steep angle produces a huge drift ratio off almost no material.
  *  Those stay in the list with their support and fill on show, but must not set the headline. */
 export function wellSupported(planes: Plane[]): Plane[] {
-  return planes.filter((p) => p.support >= 0.01 && p.fill >= 0.25);
+  // The area floor is the one that matters in practice. Support and fill are both
+  // relative, so a 0.5 m² sliver off a chair back can clear 1% support at 36% fill and
+  // then set a 31% headline drift on an otherwise intact room. A wall has area.
+  return planes.filter((p) => p.support >= 0.01 && p.fill >= 0.25 && p.area >= MIN_WALL_AREA);
 }
+
+/** In scan units squared. Uncalibrated scans are usually metres, so this is ~1 m². */
+export const MIN_WALL_AREA = 1.0;
 
 /* ---------- geometry attached to a site (evidence, not a slider value) ---------- */
 export function nearestPlane(

@@ -603,6 +603,8 @@ export function createViewer(
     const s = slots[k];
     if (!s) return null;
     return {
+      // this branch samples glTF surfaces into points, so every slot renders as points
+      kind: 'points',
       name: s.name,
       kept: s.kept,
       total: s.total,

@@ -142,6 +142,8 @@ export interface SwarmRunResult {
   results: AgentResult[];
   totalMs: number;
   note: string;
+  /** true when the server appended this run to the Supabase log */
+  logged?: boolean;
 }
 
 /** Resolve a dotted/bracketed path such as `geometry.planes[2].drift_ratio`. */

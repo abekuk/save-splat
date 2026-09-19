@@ -9,6 +9,7 @@
  */
 import { afterPaint, fmtBytes, fmtInt } from '@/core/util';
 import { MAX_POINTS, findHeaderEnd, parsePLY } from './parse';
+import type * as THREE from 'three';
 import type { PlyHeaderInfo, PlyResult } from '@/types';
 
 /** headers are far smaller than this; the slice is deliberately generous */
@@ -27,7 +28,9 @@ export interface LoadProgress {
 
 export interface LoadCallbacks {
   onProgress: (p: LoadProgress) => void;
-  onDone: (res: PlyResult, info: PlyHeaderInfo) => void;
+  /** `root` is present only for glTF: the renderable mesh behind the sampled cloud, so the
+   *  viewer can show real textured surfaces while the extractor works on even coverage. */
+  onDone: (res: PlyResult, info: PlyHeaderInfo, root?: THREE.Object3D) => void;
   onFail: (message: string, err?: unknown) => void;
   /** asked only when the file is larger than BIG_FILE; return false to abort */
   confirmLarge: (message: string) => boolean;
