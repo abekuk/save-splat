@@ -17,10 +17,12 @@ import { ProviderError } from './types';
 import type { Reasoner, ReasonerRequest, ReasonerResponse } from './types';
 
 export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
+/** Under the 60 s function limit with room for the response to be parsed and verified. */
+export const REQUEST_TIMEOUT_MS = 45_000;
 
 /** In order. General reasoning models only; anything cheaper or more specialised can still
  *  be pinned with SWARM_MODEL. */
-const PREFERENCE: RegExp[] = [
+const PAID_PREFERENCE: RegExp[] = [
   /^anthropic\/claude-opus-5/,
   /^anthropic\/claude-sonnet-5/,
   /^openai\/gpt-5(?:\.\d+)?$/,
@@ -30,9 +32,40 @@ const PREFERENCE: RegExp[] = [
   /^google\/gemini-2\.5-pro/,
 ];
 
+/** For a key with no purchased credits — which is what Stripe Projects' `openrouter/free`
+ *  plan issues — only `:free` routes will answer. Same idea: strongest general reasoner
+ *  first, and the Zod gate downstream still rejects anything that does not fit. */
+const FREE_PREFERENCE: RegExp[] = [
+  // measured 2026-09-19 on the openrouter/free key: deepseek-v4-flash answered a strict
+  // JSON-schema request in 2.5 s; nex-n2.5-pro in 0.6 s; qwen3.8-27b in 6.6 s and stalled
+  // on a long agent prompt; gemma routes returned 429; nemotron ignored response_format
+  /^deepseek\/deepseek-[a-z0-9.-]+:free$/,
+  /^nex-agi\/nex-[a-z0-9.-]*pro[a-z0-9.-]*:free$/,
+  /^qwen\/qwen[0-9.]+[a-z0-9.-]*:free$/,
+  /^dots-studio\/[a-z0-9.-]+:free$/,
+  /^meta-llama\/llama-[0-9.]+-[0-9]+b[a-z0-9.-]*:free$/,
+  /^[a-z0-9-]+\/[a-z0-9.-]+:free$/,
+];
+
 export interface CatalogueModel {
   id: string;
   supported_parameters?: string[];
+}
+
+export interface KeyInfo {
+  is_free_tier?: boolean;
+  limit?: number | null;
+  limit_remaining?: number | null;
+  usage?: number;
+}
+
+/** Whether this key can be billed for paid routes at all. OpenRouter reports
+ *  `is_free_tier` when no credits have ever been bought; a hard limit that is spent is
+ *  the same situation in practice. Unknown means assume paid and let a 402 explain. */
+export function keyIsFreeOnly(info: KeyInfo | null): boolean {
+  if (!info) return false;
+  if (info.is_free_tier) return true;
+  return typeof info.limit_remaining === 'number' && info.limit_remaining <= 0;
 }
 
 /** Whether the catalogue says this model honours a JSON-schema response_format. Agents
@@ -43,14 +76,25 @@ export function supportsStructuredOutput(m: CatalogueModel): boolean {
 }
 
 /** First preference present in the catalogue, shortest id first within a family so the
- *  stable alias wins over a dated snapshot. Null rather than a guess when nothing matches. */
-export function pickOpenRouterModel(models: CatalogueModel[]): string | null {
-  const usable = models.filter(supportsStructuredOutput).map((m) => m.id);
-  for (const re of PREFERENCE) {
-    const hits = usable.filter((id) => re.test(id)).sort((a, b) => a.length - b.length);
-    if (hits.length) return hits[0];
+ *  stable alias wins over a dated snapshot. Null rather than a guess when nothing matches.
+ *  On a free-only key the search is restricted to `:free` routes; if none of those
+ *  advertise structured output, any `:free` route is accepted and the Zod gate does the
+ *  rest — a free answer that gets rejected is better than a paid one that gets a 402. */
+export function pickOpenRouterModel(models: CatalogueModel[], freeOnly = false): string | null {
+  const ids = models.map((m) => m.id);
+  const structured = models.filter(supportsStructuredOutput).map((m) => m.id);
+  const search = (prefs: RegExp[], pool: string[]): string | null => {
+    for (const re of prefs) {
+      const hits = pool.filter((id) => re.test(id)).sort((a, b) => a.length - b.length);
+      if (hits.length) return hits[0];
+    }
+    return null;
+  };
+  if (freeOnly) {
+    const free = (pool: string[]) => pool.filter((id) => id.endsWith(':free'));
+    return search(FREE_PREFERENCE, free(structured)) ?? search(FREE_PREFERENCE, free(ids));
   }
-  return null;
+  return search(PAID_PREFERENCE, structured);
 }
 
 /** Some routed models wrap JSON in a fence even under response_format. The handler still
@@ -78,6 +122,11 @@ export class OpenRouterReasoner implements Reasoner {
     this.client = new OpenAI({
       apiKey,
       baseURL: OPENROUTER_BASE_URL,
+      // free routes can stall indefinitely; a stalled agent must become an error the operator
+      // can see, not a request that outlives the function. No SDK retries: the handler
+      // already reports per-agent failures and a retry would double the wait.
+      timeout: REQUEST_TIMEOUT_MS,
+      maxRetries: 0,
       // attribution headers OpenRouter asks for; harmless elsewhere
       defaultHeaders: {
         'HTTP-Referer': process.env.SWARM_APP_URL ?? 'https://github.com/forkiron/save-splat',
@@ -93,25 +142,33 @@ export class OpenRouterReasoner implements Reasoner {
       this.resolved = pinned;
       return pinned;
     }
+    const headers = { authorization: `Bearer ${this.apiKey}` };
     let models: CatalogueModel[];
     try {
-      const res = await fetch(`${OPENROUTER_BASE_URL}/models`, {
-        headers: { authorization: `Bearer ${this.apiKey}` },
-      });
+      const res = await fetch(`${OPENROUTER_BASE_URL}/models`, { headers });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as { data?: CatalogueModel[] };
       models = body.data ?? [];
     } catch (err) {
       throw new ProviderError(`could not read the OpenRouter model catalogue: ${describe(err)}`);
     }
-    const picked = pickOpenRouterModel(models);
+    // what this key can pay for decides which half of the catalogue is real for it
+    let info: KeyInfo | null = null;
+    try {
+      const res = await fetch(`${OPENROUTER_BASE_URL}/auth/key`, { headers });
+      if (res.ok) info = ((await res.json()) as { data?: KeyInfo }).data ?? null;
+    } catch {
+      info = null; // unknown: assume paid and let a 402 explain itself
+    }
+    const freeOnly = keyIsFreeOnly(info);
+    const picked = pickOpenRouterModel(models, freeOnly);
     if (!picked) {
       const sample = models
-        .filter(supportsStructuredOutput)
+        .filter((m) => (freeOnly ? m.id.endsWith(':free') : supportsStructuredOutput(m)))
         .slice(0, 12)
         .map((m) => m.id);
       throw new ProviderError(
-        `no preferred model with structured output found on OpenRouter — set SWARM_MODEL ` +
+        `no preferred ${freeOnly ? ':free ' : ''}model found on OpenRouter — set SWARM_MODEL ` +
           `explicitly. Candidates: ${sample.join(', ')}`,
       );
     }

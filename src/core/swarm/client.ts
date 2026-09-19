@@ -11,6 +11,8 @@ export interface SwarmStatus {
   effort: string;
   /** whether runs are being appended to the Supabase log */
   persist?: boolean;
+  /** the Athena incident reviewer, if provisioned */
+  review?: { configured: boolean; publicUrl: string | null };
   /** set when a key is present but the model could not be resolved for it */
   error?: string;
 }
@@ -52,4 +54,27 @@ export async function runSwarmRemote(args: RunSwarmArgs): Promise<SwarmRunResult
     throw new Error(msg);
   }
   return body as SwarmRunResult;
+}
+
+export interface ReviewResult {
+  text: string;
+  agent: string;
+  publicUrl: string | null;
+  ms: number;
+}
+
+/** Athena's pass over a finished run. Advisory prose only; it proposes nothing. */
+export async function requestReview(args: {
+  run: SwarmRunResult;
+  context: unknown;
+  operatorNotes?: string | null;
+}): Promise<ReviewResult> {
+  const res = await fetch('/api/swarm/review', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  const body = (await res.json().catch(() => ({}))) as Partial<ReviewResult> & { error?: string };
+  if (!res.ok) throw new Error(body.error ?? `review request failed (${res.status})`);
+  return body as ReviewResult;
 }

@@ -3,7 +3,7 @@ import type { AppSnapshot } from '@/core/snapshot';
 import { SWARM_AGENTS, agentByKey, parseProposal } from '@/core/swarm/agents';
 import type { AgentParam, ProposalValue } from '@/core/swarm/agents';
 import { buildSwarmContext, copyText } from '@/core/swarm/context';
-import { runSwarmRemote, swarmStatus } from '@/core/swarm/client';
+import { requestReview, runSwarmRemote, swarmStatus } from '@/core/swarm/client';
 import type { AgentResult, Verdict } from '@/core/swarm/proposal';
 import { LAMBDA, TYPE_LABEL, rho } from '@/core/ranking';
 import { mVol } from '@/core/units';
@@ -118,7 +118,37 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             at: new Date(res.generated),
           };
         }
-        setState((x) => ({ swarm: { ...x.swarm, run: res, busy: false }, proposals }));
+        setState((x) => ({
+          swarm: {
+            ...x.swarm,
+            run: res,
+            busy: false,
+            review: { result: null, busy: !!x.swarm.status?.review?.configured, error: null },
+          },
+          proposals,
+        }));
+        // Athena reads the finished run and writes the incident-commander paragraph. It
+        // proposes nothing and can fail without touching anything above.
+        if (getState().swarm.status?.review?.configured) {
+          void requestReview({ run: res, context: ctx, operatorNotes: notes })
+            .then((r) =>
+              setState((x) => ({
+                swarm: { ...x.swarm, review: { result: r, busy: false, error: null } },
+              })),
+            )
+            .catch((e: unknown) =>
+              setState((x) => ({
+                swarm: {
+                  ...x.swarm,
+                  review: {
+                    result: null,
+                    busy: false,
+                    error: e instanceof Error ? e.message : String(e),
+                  },
+                },
+              })),
+            );
+        }
         const failed = res.results.filter((r) => !r.verified || r.error).length;
         const abstained = res.results.filter((r) => r.abstained).length;
         setStatus(
@@ -239,7 +269,7 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             </>
           ) : (
             <>
-              No reasoner reachable. Put <b>OPENROUTER_API_KEY</b> (or OPENAI_API_KEY /
+              No reasoner reachable. Put <b>OPENROUTER_API_API_KEY</b> (or OPENAI_API_KEY /
               ANTHROPIC_API_KEY) in <b>.env.local</b> — <b>stripe projects env --pull</b> writes it
               — and restart the dev server. Keys are read server-side only and never bundled into
               the page.
@@ -250,6 +280,7 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
         <div className="gnote">
           reasoner: {status.provider} · {status.model} · key never reaches the browser
           {status.persist ? ' · runs logged to supabase' : ''}
+          {status.review?.configured ? ' · athena review on' : ''}
         </div>
       ) : null}
 
@@ -322,6 +353,35 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
           </div>
         );
       })}
+
+      {run && status?.review?.configured ? (
+        <>
+          <div className="ghead">INCIDENT REVIEW · ATHENA</div>
+          <div className={s.swarm.review.result ? 'sverdict filled' : 'sverdict'}>
+            {s.swarm.review.busy
+              ? 'Athena is reading the run…'
+              : s.swarm.review.error
+                ? `review unavailable: ${s.swarm.review.error}`
+                : s.swarm.review.result
+                  ? s.swarm.review.result.text
+                  : 'no review yet'}
+            {s.swarm.review.result ? (
+              <div className="scited">
+                {s.swarm.review.result.agent} · {(s.swarm.review.result.ms / 1000).toFixed(1)}s ·
+                advisory prose, proposes nothing
+                {s.swarm.review.result.publicUrl ? (
+                  <>
+                    {' · '}
+                    <a href={s.swarm.review.result.publicUrl} target="_blank" rel="noreferrer">
+                      open agent
+                    </a>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </>
+      ) : null}
 
       <div className="ghead">OVERRIDE LOG</div>
       {!s.overrideLog.length ? (

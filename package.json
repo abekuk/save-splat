@@ -15,11 +15,14 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "npm run typecheck && npm run lint && npm run test",
+    "doctor": "tsx scripts/doctor.ts",
+    "migrate": "tsx scripts/migrate.ts",
     "swarm:smoke": "tsx --env-file-if-exists=.env.local scripts/swarm-smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
     "openai": "^7.19.0",
+    "postgres": "^3.4.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.169.0",

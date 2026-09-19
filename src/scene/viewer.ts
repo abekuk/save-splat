@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { clamp, fmtInt } from '@/core/util';
 import { ORIENTS, detectOrientation } from '@/core/orientation';
+import { estimateGround } from '@/core/geometry/level';
 import type { OrientationDetection } from '@/core/orientation';
 import { CLS_CSS, CLS_HEX } from '@/core/geometry/extract';
 import type { ExtractInput } from '@/core/geometry/extract';
@@ -600,11 +601,25 @@ export function createViewer(
 
     let det: OrientationDetection | null = null;
     let idx = orient;
+    let levelled: number | null = null;
     if (idx == null) {
       det = detectOrientation(res.positions);
       idx = det.index;
     }
     pts.rotation.x = ORIENTS[idx].rx;
+
+    /* When no axis convention fits, the scan has no convention to find — a COLMAP-derived
+       3DGS scene is at an arbitrary rotation and no axis flip will make its floor level.
+       Everything measured here is defined against up, so fall back to estimating the ground
+       plane and rotating that onto +Y. */
+    if (det && !det.confident) {
+      const ground = estimateGround(res.positions);
+      if (ground && ground.support >= 0.06) {
+        const from = new THREE.Vector3(...ground.normal).normalize();
+        pts.quaternion.setFromUnitVectors(from, new THREE.Vector3(0, 1, 0));
+        levelled = ground.support;
+      }
+    }
     scene.add(pts);
 
     slots[key] = {
@@ -630,12 +645,14 @@ export function createViewer(
     cb.onStatus(
       `${name} → slot ${key} · ${fmtInt(res.kept)} / ${fmtInt(res.total)} pts · 1:${res.step} sampling · ` +
         `${fmtInt(res.culled)} culled · colour ${res.colorSource}` +
-        (det
-          ? ` · up-axis ${ORIENTS[idx].name}` +
-            (det.confident
-              ? ` (detected, floor holds ${Math.round(det.score * 100)}% of points)`
-              : ' (UNCERTAIN — press f if this looks wrong)')
-          : ''),
+        (levelled != null
+          ? ` · levelled onto its largest flat surface (${Math.round(levelled * 100)}% of points) — press f to override`
+          : det
+            ? ` · up-axis ${ORIENTS[idx].name}` +
+              (det.confident
+                ? ` (detected, floor holds ${Math.round(det.score * 100)}% of points)`
+                : ' (UNCERTAIN — press f if this looks wrong)')
+            : ''),
     );
   }
 
@@ -706,6 +723,8 @@ export function createViewer(
       return null;
     }
     s.orient = (s.orient + 1) % ORIENTS.length;
+    // drop any auto-levelling: the operator is taking over
+    s.obj.quaternion.identity();
     s.obj.rotation.x = ORIENTS[s.orient].rx;
     // Markers hold their world positions; reorienting moves the cloud under them by design.
     let cleared = false;

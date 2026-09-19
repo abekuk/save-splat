@@ -57,8 +57,17 @@ identical planes; `extract.test.ts` asserts this. Do not swap in `Math.random()`
 - **Providers are one interface.** Adding a vendor is one file in `server/swarm/providers/`
   implementing `Reasoner`, plus a line in `providers/index.ts`. The model is resolved from the
   account, never hardcoded; unit-test the picker without the network, as the existing ones do.
-- **Credentials come from Stripe Projects.** `stripe projects env --pull` writes `.env.local`;
-  `SETUP.md` is the runbook. Never commit `.env*` except `.env.example`.
+- **Credentials come from Stripe Projects.** `stripe projects env --pull` writes `.env`;
+  `SETUP.md` is the runbook and lists the real emitted names (`OPENROUTER_API_API_KEY`,
+  `SUPABASE_POOLER_URL`, `ATHENA_ATHENA_AGENT_*`, `VERCEL_*`). Never commit `.env*` except
+  `.env.example`. `.projects/state.json` (project + resource ids, no secrets) IS committed.
+- **Athena plays two roles; keep them apart.** As the default _reasoner_
+  (`providers/athena.ts`) it answers the five agent prompts with JSON that goes through the Zod
+  gate and verifiers like any provider's output. As the _reviewer_ (`athena.ts`, `/api/swarm/
+review`) it writes prose after the run. Never route the reviewer's text into
+  `RubbleSwarm.propose`, a slider, or the ranking — the verifier gate exists precisely so that
+  unverified text cannot reach ρ. If Athena is unconfigured the review panel does not appear
+  and the reasoner falls through to the next configured key.
 
 ## Validation boundary
 
@@ -77,7 +86,8 @@ field and the received value so a caller can retry.
 - **`q` (P trapped alive) deliberately has no agent.** An exterior scan carries no evidence that an
   occupant is alive. The gap is the honest answer, not an oversight.
 - **The swarm proposes; the operator applies.** Nothing may write a slider without an explicit
-  operator action, and every application is logged with the value it replaced.
+  operator action, and every application is logged with the value it replaced. The Athena
+  reviewer sits outside this loop entirely: advisory prose, never a value.
 - **Not a mesh.** Planes, angles and volumes are the deliverable. Mesh extraction is the reflex
   answer and the wrong one — a surface hides the residual.
 - **A/B slots are a visual toggle.** There is no registration or change detection between them.
@@ -96,6 +106,7 @@ large `.ply` fixture can be generated rather than committed (they are hundreds o
 <!-- stripe projects llm-context appends provider guidance below this line -->
 
 <!-- stripe-projects-cli managed:agents-md:start -->
+
 ## Stripe Projects CLI
 
 This repository is initialized for the Stripe project "save-splat".
@@ -103,4 +114,5 @@ This repository is initialized for the Stripe project "save-splat".
 ## Tools used
 
 - [Stripe CLI](https://docs.stripe.com/stripe-cli) with the `projects` plugin to manage third-party services, credentials, and deployments for this project. Use the stripe-projects-cli to manage deploying and access to third party services.
+
 <!-- stripe-projects-cli managed:agents-md:end -->
