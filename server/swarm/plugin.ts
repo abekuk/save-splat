@@ -12,7 +12,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Plugin } from 'vite';
 import { loadEnv } from 'vite';
 import { runSwarm } from './handler';
-import { runVision } from './vision';
+import { runRoom } from './room';
 import { detectProvider, getReasoner } from './providers';
 
 const MAX_BODY = 24 * 1024 * 1024; // six rendered JPEG views are the large case, not the JSON
@@ -92,7 +92,7 @@ export function swarmPlugin(): Plugin {
         })();
       });
 
-      server.middlewares.use('/api/swarm/vision', (req, res) => {
+      server.middlewares.use('/api/swarm/room', (req, res) => {
         if (req.method !== 'POST') {
           json(res, 405, { error: 'POST only' });
           return;
@@ -107,10 +107,10 @@ export function swarmPlugin(): Plugin {
             json(
               res,
               200,
-              await runVision({
+              await runRoom({
                 images: body.images as string[],
-                geometryLevel: body.geometryLevel as never,
-                sceneNote: typeof body.sceneNote === 'string' ? body.sceneNote : null,
+                geometryNote: typeof body.geometryNote === 'string' ? body.geometryNote : null,
+                operatorNote: typeof body.operatorNote === 'string' ? body.operatorNote : null,
               }),
             );
           } catch (err) {

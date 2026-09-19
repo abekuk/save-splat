@@ -12,6 +12,9 @@ import * as THREE from 'three';
 import { clamp, fmtInt } from '@/core/util';
 import { ORIENTS, detectOrientation } from '@/core/orientation';
 import { robustExtent } from '@/core/cloud/trim';
+
+/** Points are drawn this much larger for a capture, so surfaces read as surfaces. */
+const CAPTURE_POINT_SCALE = 3.5;
 import type { OrientationDetection } from '@/core/orientation';
 import { CLS_CSS, CLS_HEX } from '@/core/geometry/extract';
 import type { ExtractInput } from '@/core/geometry/extract';
@@ -54,7 +57,11 @@ export function createViewer(
   labelLayer: HTMLElement,
   cb: ViewerCallbacks,
 ) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, preserveDrawingBuffer: true });
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false,
+    preserveDrawingBuffer: true,
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
 
@@ -650,7 +657,7 @@ export function createViewer(
      not find their view moved because an agent looked at something.
      Plane overlays and markers are hidden for the capture: the model should read the scan,
      not this app's annotations drawn on top of it. */
-  function captureViews(count = 4, quality = 0.72): string[] {
+  function captureViews(count = 4, quality = 0.8): string[] {
     const shots: string[] = [];
     const saved = {
       theta: orbit.theta,
@@ -662,6 +669,18 @@ export function createViewer(
     if (hadPlanes) {
       showPlanes = false;
       refreshOverlay();
+    }
+    /* A point cloud drawn at screen-accurate size is a haze of dots, and a vision model
+       reads that as "too sparse" and abstains — which is a true statement about the render
+       and a false one about the scan. Fattening the points for the capture makes surfaces
+       read as surfaces, which is what the model needs to judge a crack from a hole. */
+    const sizes = new Map<THREE.Points, number>();
+    for (const k of Object.keys(slots) as SlotKey[]) {
+      const sl = slots[k];
+      if (!sl || !sl.obj.visible) continue;
+      const mat = sl.obj.material as THREE.PointsMaterial;
+      sizes.set(sl.obj, mat.size);
+      mat.size = mat.size * CAPTURE_POINT_SCALE;
     }
     const labels = labelLayer ? (labelLayer.style.visibility ?? '') : '';
     if (labelLayer) labelLayer.style.visibility = 'hidden';
@@ -679,6 +698,7 @@ export function createViewer(
       orbit.radius = saved.radius;
       orbit.target.copy(saved.target);
       applyOrbit();
+      for (const [obj, size] of sizes) (obj.material as THREE.PointsMaterial).size = size;
       if (labelLayer) labelLayer.style.visibility = labels;
       if (hadPlanes) {
         showPlanes = true;

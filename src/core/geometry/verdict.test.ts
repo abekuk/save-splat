@@ -116,3 +116,56 @@ describe('surfacePhrase', () => {
     expect(surfacePhrase(incline)).toBe('sloping surface at');
   });
 });
+
+describe('alignment gate', () => {
+  const tilted = (label: string, deg: number, cls: 'wall' | 'incline'): Plane => ({
+    id: 1,
+    label,
+    n: [0.5, 0.5, 0.7],
+    d: 0,
+    centroid: [0, 0, 0],
+    u: [1, 0, 0],
+    v: [0, 1, 0],
+    umin: 0,
+    umax: 2,
+    vmin: 0,
+    vmax: 2,
+    count: 500,
+    weight: 500,
+    support: 0.1,
+    area: 4,
+    bboxArea: 4,
+    fill: 0.9,
+    rms: 0.01,
+    cls,
+    tilt: (deg * Math.PI) / 180,
+    drift: cls === 'wall' ? Math.tan((deg * Math.PI) / 180) : null,
+    band: null,
+  });
+
+  it('refuses to report a lean from a scan that is not gravity-aligned', () => {
+    // the real case: every surface diagonal, no floor, a "wall" 25 degrees off vertical
+    const planes = [
+      tilted('I1', 64, 'incline'),
+      tilted('I2', 61, 'incline'),
+      tilted('I3', 52, 'incline'),
+      tilted('W1', 25, 'wall'),
+      tilted('W2', 23, 'wall'),
+    ];
+    const v = buildVerdict(planes);
+    expect(v.level).toBe('unknown');
+    expect(v.headline).toMatch(/not level/);
+    expect(v.detail).toMatch(/coordinate frame rather than the building/);
+  });
+
+  it('still judges a scan that is properly squared up', () => {
+    const planes = [
+      tilted('W1', 0.3, 'wall'),
+      tilted('W2', 0.5, 'wall'),
+      tilted('W3', 1.1, 'wall'),
+      tilted('I1', 60, 'incline'),
+    ];
+    const v = buildVerdict(planes);
+    expect(v.level).not.toBe('unknown');
+  });
+});

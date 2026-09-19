@@ -56,7 +56,42 @@ function deg(p: Plane): string {
   return `${((p.tilt * 180) / Math.PI).toFixed(1)}°`;
 }
 
+/* A scan that is not gravity-aligned produces planes at every angle, and a "wall" 25° off
+   vertical then reports a 47% lean — a catastrophic-looking number from a coordinate frame,
+   not from a building. A real room is mostly axis-aligned once it is the right way up, so
+   when little of the plane area is, verticality is not measurable and saying so is the only
+   honest output. The four cardinal orientations cannot fix a capture tilted between them. */
+export const ALIGNED_DEG = 15;
+export const MIN_ALIGNED_FRACTION = 0.6;
+
+export function axisAlignedFraction(planes: Plane[]): number {
+  let aligned = 0,
+    total = 0;
+  for (const p of planes) {
+    total += p.area;
+    const deg = (p.tilt * 180) / Math.PI;
+    if ((p.cls === 'wall' || p.cls === 'slab') && deg < ALIGNED_DEG) aligned += p.area;
+  }
+  return total > 0 ? aligned / total : 0;
+}
+
 export function buildVerdict(planes: Plane[]): Verdict {
+  const aligned = axisAlignedFraction(planes);
+  if (planes.length >= 4 && aligned < MIN_ALIGNED_FRACTION) {
+    return {
+      level: 'unknown',
+      headline: 'This scan is not level — verticality cannot be measured',
+      detail:
+        `Only ${Math.round(aligned * 100)}% of the fitted surface sits near vertical or horizontal, ` +
+        'so the scan is tilted relative to gravity and any out-of-plumb figure would describe the ' +
+        'coordinate frame rather than the building. Try the up-axis control; if none of the four ' +
+        'settings squares it up, the capture was not gravity-aligned.',
+      structural: [],
+      fragments: planes.filter((p) => p.cls === 'wall'),
+      worst: null,
+    };
+  }
+
   const walls = planes.filter((p) => p.cls === 'wall' && p.drift != null);
   const structural = walls.filter(isStructural).sort((a, b) => (b.drift ?? 0) - (a.drift ?? 0));
   const fragments = walls.filter((p) => !isStructural(p));
