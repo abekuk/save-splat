@@ -123,6 +123,62 @@ ranking can be reconstructed after the fact.
 an occupant is alive. Leaving the gap visible was chosen over giving it a plausible-looking number,
 and that decision did not change when the other five agents became real.
 
+### 2.5 How the pieces fit, and what each one is for
+
+The short version: **a phone replaces a laser scanner, geometry replaces an engineer's tape
+measure, and a language model fills in only what neither can see** — with the geometry checking the
+model rather than the other way round.
+
+**Three captures of the same scene, three different jobs.**
+
+| Input                 | What it uniquely carries                  | What it is used for                                                  | Status |
+| --------------------- | ----------------------------------------- | -------------------------------------------------------------------- | ------ |
+| Gaussian splat `.ply` | per-point covariance (`scale_*`, `rot_*`) | each point sets its own plane tolerance, so fits are sharper         | built  |
+| Point cloud `.ply`    | `xyz` + RGB only                          | same pipeline, falling back to one global tolerance from scene scale | built  |
+| Textured mesh `.glb`  | faces + a photo texture atlas             | the realistic view; true surfaces rather than sampled points         | built  |
+
+They are not alternatives — they are different projections of one capture, and the interesting
+signal is where they disagree. A surface that is geometrically flat but optically glossy is glazing,
+not wall. Geometry alone calls it solid.
+
+**Why each technology is there.**
+
+- **Gaussian splatting** turns a phone walk-around into metric 3D without a laser scanner or a site
+  visit from an engineer. That single cost collapse is the entire premise: assessment throughput is
+  the binding constraint, and this is what moves it.
+- **RANSAC plane fitting** turns a cloud into _named surfaces with error bars_ — support, fill, RMS
+  residual. Deliberately not a mesh: a surface looks authoritative and hides how much of it was
+  actually measured.
+- **The drift ratio** is the bridge to existing practice. `δ = tan(θ)` is the number structural
+  engineers already use, so the output plugs into a decision someone already knows how to make
+  rather than inventing a new scale nobody trusts.
+- **The LLM swarm** proposes only the values geometry cannot measure — occupancy, access, crew-hours.
+  Each proposal is re-checked against the geometry it claims to read, and an agent that cannot
+  support its number abstains. Nothing moves a slider without an operator.
+
+**Proposed, not built.** Stated separately so the table above stays honest:
+
+- **A vision agent reading the mesh's texture atlas.** A `.glb` embeds its texture as a flat image,
+  so a vision model can be handed the actual captured surface with no rendering, no viewpoint choice
+  and no occlusion. It would report what geometry is blind to: exposed rebar (cover concrete gone,
+  section capacity lost), soot (fire, not seismic — a different response entirely), water staining,
+  whether glazing is intact or breached.
+- **Its verifier is the interesting part.** Every claim is cross-checked against a geometric feature
+  — "unreinforced masonry" against plane roughness, "glazing intact" against optical specularity,
+  "severe spalling" against colour dispersion across a fitted plane. Disagreement abstains rather
+  than averages. That is a verifier which is _not the model checking itself_, which is the only kind
+  worth much.
+- **Specularity and roughness from the splat.** The ratio of higher-order spherical-harmonic
+  coefficients to the DC term separates view-dependent surfaces (glass, metal, standing water) from
+  Lambertian ones (concrete, dust, dry rubble); Gaussian anisotropy gives a surface-roughness proxy.
+  The parser currently reads `f_dc_*` only and discards `f_rest_*`, so neither is available yet.
+- **True volume from a closed mesh.** §5.3's column measure is an upper bound. A watertight mesh
+  gives real enclosed volume by the divergence theorem, which would directly sharpen `τ`. Scan
+  meshes are rarely watertight, so this needs a boundary-edge check and a confidence, not a bare
+  number.
+
+---
+
 ---
 
 ## 3. Where this sits in the UN frameworks
