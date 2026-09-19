@@ -95,6 +95,8 @@ export interface GeometryResult {
   radius: number;
   usedCovariance: boolean;
   totalWeight: number;
+  /** fits discarded because their patch was too diffuse to represent as a surface */
+  droppedDiffuse: number;
   residualPoints: number;
   residualFrac: number;
   ms: number;

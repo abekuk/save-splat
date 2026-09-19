@@ -155,6 +155,14 @@ export default function GeoTab({
         {g.usedCovariance
           ? 'each Gaussian’s own extent along the normal (n′Σn)'
           : 'scene scale — this cloud carries no scale_*/rot_*, so there is no per-point covariance'}
+        {g.droppedDiffuse > 0 ? (
+          <>
+            {' · '}
+            <b>{g.droppedDiffuse}</b> fit{g.droppedDiffuse === 1 ? '' : 's'} discarded as too
+            diffuse to draw — their points were spread too thin across the patch to represent as a
+            surface
+          </>
+        ) : null}
       </div>
 
       <div className="scalebox">
