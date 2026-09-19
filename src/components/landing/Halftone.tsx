@@ -37,7 +37,7 @@ const PITCH = 0.0155;
 /** floor on the shading, so unlit faces still carry tone rather than going flat black */
 const AMBIENT = 0.34;
 /** >1 pushes mid-tones lighter, which is what keeps the basin from filling in */
-const GAMMA = 1.9;
+const GAMMA = 1.72;
 
 /** the profile of the surface of revolution, as a dense polyline in (r, y) with normals */
 interface Prof {
@@ -159,7 +159,7 @@ export default function Halftone({ className }: { className?: string }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
 
-      const scale = Math.min(w / 2.35, h / 1.5);
+      const scale = Math.min(w / 2.12, h / 1.32);
       const cx = w / 2;
       const cy = h / 2 + scale * 0.12;
       // let the darkest dots very nearly touch, as a real halftone does
@@ -188,7 +188,12 @@ export default function Halftone({ className }: { className?: string }) {
         // is what gives the basin its readable mid-tones
         const shade = AMBIENT + (1 - AMBIENT) * lam;
         const dark = Math.min(1, Math.max(0, 1 - shade * p.ao));
-        const r = maxR * Math.pow(dark, GAMMA);
+        /* Foreshortening. Toward the silhouette the (u,v) lattice compresses in screen
+           space, so dots pile into each other and the rim fuses into a solid black
+           crescent. A halftone cell there covers less projected area — area scales with
+           |n·view|, so the dot radius scales with its square root. Ink per unit screen
+           area then stays put and the edge resolves back into dots. */
+        const r = maxR * Math.pow(dark, GAMMA) * Math.sqrt(nz2);
         if (r < 0.1) continue;
 
         drawn.push({ sx: cx + x1 * scale, sy: cy - y2 * scale, r, depth: z2 });
