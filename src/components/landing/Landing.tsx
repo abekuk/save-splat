@@ -29,7 +29,10 @@ export default function Landing({
       }}
     >
       <div className="rules" aria-hidden="true">
-        <i /><i /><i /><i />
+        <i />
+        <i />
+        <i />
+        <i />
       </div>
 
       <header className="lhead">

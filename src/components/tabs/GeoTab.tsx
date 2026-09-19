@@ -148,15 +148,6 @@ export default function GeoTab({
         </div>
       </div>
 
-      <div className="gnote">
-        Worst drift counts only walls holding at least 1% of the cloud at 25% fill or better;
-        thinner fragments still appear in the list, with their support and fill shown.{' '}
-        {fmtInt(g.workingSet)} points fitted · epsilon from{' '}
-        {g.usedCovariance
-          ? 'each Gaussian’s own extent along the normal (n′Σn)'
-          : 'scene scale — this cloud carries no scale_*/rot_*, so there is no per-point covariance'}
-      </div>
-
       <div className="scalebox">
         <label htmlFor="f-scale">1 SCAN UNIT =</label>
         <input
@@ -172,11 +163,22 @@ export default function GeoTab({
         />
         <label>METRES</label>
       </div>
-      <div className="gnote">
-        Angles and drift ratios are scale-free and hold whatever this is set to. Areas and volumes
-        do not — they are only metric if this figure is right. ARKit-derived exports (Scaniverse,
-        Polycam) are usually already 1 unit = 1 m.
-      </div>
+      <details className="gnote-details">
+        <summary>how to read these numbers</summary>
+        <div className="gnote">
+          Worst drift counts only walls holding at least 1% of the cloud at 25% fill or better;
+          thinner fragments still appear in the list, with their support and fill shown.{' '}
+          {fmtInt(g.workingSet)} points fitted · epsilon from{' '}
+          {g.usedCovariance
+            ? 'each Gaussian’s own extent along the normal (n′Σn)'
+            : 'scene scale — this cloud carries no scale_*/rot_*, so there is no per-point covariance'}
+        </div>
+        <div className="gnote">
+          Angles and drift ratios are scale-free and hold whatever this is set to. Areas and volumes
+          do not — they are only metric if this figure is right. ARKit-derived exports (Scaniverse,
+          Polycam) are usually already 1 unit = 1 m.
+        </div>
+      </details>
 
       <div className="legend">
         {[...DRIFT_BANDS].reverse().map((b) => (
@@ -185,8 +187,14 @@ export default function GeoTab({
             {b.name}
           </span>
         ))}
-        <span><i style={{ background: CLS_CSS.slab }} />SLAB</span>
-        <span><i style={{ background: CLS_CSS.incline }} />INCLINED</span>
+        <span>
+          <i style={{ background: CLS_CSS.slab }} />
+          SLAB
+        </span>
+        <span>
+          <i style={{ background: CLS_CSS.incline }} />
+          INCLINED
+        </span>
       </div>
 
       <div className="ghead">WALLS — VERTICALITY</div>

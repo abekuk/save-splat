@@ -802,3 +802,27 @@ ul.lim li {
 input[type='range'] {
   accent-color: var(--fg);
 }
+
+/* Long-form explanation belongs behind a disclosure, not above the numbers. */
+.gnote-details {
+  margin: 4px 0 12px;
+}
+.gnote-details summary {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+  cursor: pointer;
+  list-style: none;
+  padding: 2px 0;
+}
+.gnote-details summary::-webkit-details-marker {
+  display: none;
+}
+.gnote-details summary::before {
+  content: '▸ ';
+}
+.gnote-details[open] summary::before {
+  content: '▾ ';
+}

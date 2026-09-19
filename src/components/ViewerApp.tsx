@@ -14,7 +14,7 @@ import {
   setStatus,
   useAppState,
 } from '@/state/store';
-import TopBar from '@/components/TopBar';
+import Hud, { StatusChip } from '@/components/Hud';
 import LoadOverlay from '@/components/LoadOverlay';
 import Panel from '@/components/Panel';
 
@@ -206,8 +206,8 @@ export default function ViewerApp({
       <div id="view" ref={viewRef} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
         <canvas id="gl" ref={canvasRef} />
         <div id="labels" ref={labelsRef} />
-        <TopBar viewer={viewer} onLoadFile={load} onGeometry={runGeometry} onExit={onExit} />
-        <div id="statusbar">{s.status}</div>
+        <Hud viewer={viewer} onLoadFile={load} onGeometry={runGeometry} onExit={onExit} />
+        <StatusChip text={s.status} />
         <div id="hintbar" className={s.hint ? 'on' : undefined}>
           {s.hint}
         </div>
