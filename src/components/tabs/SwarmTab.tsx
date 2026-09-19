@@ -3,6 +3,8 @@ import type { AppSnapshot } from '@/core/snapshot';
 import { SWARM_AGENTS, agentByKey, coerce } from '@/core/swarm/agents';
 import type { AgentParam, ProposalValue } from '@/core/swarm/agents';
 import { buildSwarmContext, copyText } from '@/core/swarm/context';
+import { runSwarmRemote, swarmStatus } from '@/core/swarm/client';
+import type { AgentResult, Verdict } from '@/core/swarm/proposal';
 import { LAMBDA, TYPE_LABEL, rho } from '@/core/ranking';
 import { mVol } from '@/core/units';
 import { fmtInt, fmtNum } from '@/core/util';
@@ -33,11 +35,28 @@ function proposalText(v: ProposalValue, param: AgentParam): string {
   return paramText(shim, param);
 }
 
+const MARK: Record<Verdict['status'], string> = { pass: '✓', fail: '✗', unverified: '·' };
+const VCLASS: Record<Verdict['status'], string> = {
+  pass: 'vline pass',
+  fail: 'vline fail',
+  unverified: 'vline unver',
+};
+
 export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
   const s = useAppState();
   const site = s.sites.find((x) => x.id === s.selectedId) ?? null;
   const ctx = buildSwarmContext(snap);
   const chars = JSON.stringify(ctx).length;
+  const { run, busy, notes, status } = s.swarm;
+
+  const byKey = new Map<string, AgentResult>((run?.results ?? []).map((r) => [r.key, r]));
+
+  /* Ask once whether a reasoner is reachable, so the button can say why it is disabled
+     instead of failing on the first click. */
+  useEffect(() => {
+    if (s.swarm.status) return;
+    void swarmStatus().then((st) => setState((x) => ({ swarm: { ...x.swarm, status: st } })));
+  }, [s.swarm.status]);
 
   /* The seam a reasoner plugs into. Deliberately the whole public surface. */
   useEffect(() => {
@@ -79,13 +98,47 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
     setStatus(`${a.name} proposal applied to ${site.name} — override logged`);
   };
 
+  const runNow = (): void => {
+    if (busy) return;
+    setState((x) => ({ swarm: { ...x.swarm, busy: true } }));
+    setStatus('swarm running — five agents over the current evidence…');
+    void runSwarmRemote({ context: ctx, operatorNotes: notes, siteId: site?.id ?? null })
+      .then((res) => {
+        // Only non-abstained results become applyable proposals. A failed verifier still
+        // produces one, but the APPLY button stays locked and says why.
+        const proposals: Record<string, { value: ProposalValue; rationale: string; at: Date }> = {};
+        for (const r of res.results) {
+          if (r.abstained || r.value === null || r.error) continue;
+          proposals[r.key] = {
+            value: r.value as ProposalValue,
+            rationale: r.rationale,
+            at: new Date(res.generated),
+          };
+        }
+        setState((x) => ({ swarm: { ...x.swarm, run: res, busy: false }, proposals }));
+        const failed = res.results.filter((r) => !r.verified || r.error).length;
+        const abstained = res.results.filter((r) => r.abstained).length;
+        setStatus(
+          `swarm done in ${(res.totalMs / 1000).toFixed(1)}s · ${res.results.length} agents · ` +
+            `${abstained} abstained · ${failed} did not verify`,
+        );
+      })
+      .catch((e: unknown) => {
+        setState((x) => ({ swarm: { ...x.swarm, busy: false } }));
+        setStatus(`swarm failed: ${e instanceof Error ? e.message : String(e)}`);
+      });
+  };
+
+  const noKey = status ? !status.configured : false;
+  const runLabel = busy ? 'RUNNING…' : 'RUN SWARM';
+
   return (
     <>
-      <div className="h">AGENT SWARM — SHELL</div>
+      <div className="h">AGENT SWARM</div>
       <p>
         One agent per ranking parameter, each with its own evidence source and a cheap verifier. The
-        geometry layer is the evidence substrate. <b>No reasoning runs in this build</b> — the cards
-        are the contract, and every proposal slot stays empty until a reasoner is attached.
+        geometry layer is the evidence substrate — the agents read the measured planes, drift bands
+        and debris volume, not the point cloud.
       </p>
       <div className="warn" style={{ marginBottom: 12 }}>
         <b>Assisted assessment, not autonomous dispatch.</b> An agent proposes; the operator applies.
@@ -128,10 +181,39 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             <><b>not extracted</b> — press g to give the agents evidence</>
           )}
         </div>
-        <div style={{ marginTop: 6, color: 'var(--dim)' }}>payload {fmtInt(chars)} chars</div>
+        <div style={{ marginTop: 6, color: 'var(--dim)' }}>
+          payload {fmtInt(chars)} chars
+          {run ? ` · last run ${run.model} · ${(run.totalMs / 1000).toFixed(1)}s` : ''}
+        </div>
       </div>
 
-      <div className="row" style={{ marginBottom: 12 }}>
+      <div className="ghead">OPERATOR NOTES — THE ONLY SOURCE FOR OCCUPANCY</div>
+      <div className="gnote" style={{ marginBottom: 6 }}>
+        Nothing in a scan evidences how many people are inside. Anything you know from witnesses,
+        rosters, building use or time of day goes here; the RECORDS agent abstains without it.
+      </div>
+      <textarea
+        className="snotes"
+        value={notes}
+        placeholder="e.g. primary school, weekday 10:40, two classes reported unaccounted for"
+        onChange={(e) => setState((x) => ({ swarm: { ...x.swarm, notes: e.target.value } }))}
+      />
+
+      <div className="row" style={{ margin: '10px 0 4px' }}>
+        <button
+          className="btn primary"
+          disabled={busy || noKey || !site}
+          title={
+            noKey
+              ? 'no ANTHROPIC_API_KEY on the dev server'
+              : !site
+                ? 'select a site first'
+                : 'run all five agents'
+          }
+          onClick={runNow}
+        >
+          {runLabel}
+        </button>
         <button
           className="btn"
           onClick={() => {
@@ -148,37 +230,88 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
         <button
           className="btn"
           onClick={() => {
-            setState({ proposals: {} });
+            setState((x) => ({ proposals: {}, swarm: { ...x.swarm, run: null } }));
             setStatus('proposals cleared — the override log is kept');
           }}
         >
-          CLEAR PROPOSALS
+          CLEAR
         </button>
       </div>
+      {noKey ? (
+        <div className="gnote" style={{ color: 'var(--amber)' }}>
+          No reasoner reachable. Put <b>ANTHROPIC_API_KEY</b> in <b>.env.local</b> and restart the
+          dev server. The key is read server-side only — it is never bundled into the page.
+        </div>
+      ) : status ? (
+        <div className="gnote">
+          reasoner: {status.model} · effort {status.effort} · runs in the dev server, key never
+          reaches the browser
+        </div>
+      ) : null}
 
       <div className="ghead">AGENTS</div>
       {SWARM_AGENTS.map((a) => {
+        const res = byKey.get(a.key);
         const pr = s.proposals[a.key];
+        const chip = res?.error
+          ? 'ERROR'
+          : res?.abstained
+            ? 'ABSTAINED'
+            : res && !res.verified
+              ? 'UNVERIFIED'
+              : pr
+                ? 'PROPOSED'
+                : 'NO PROPOSAL';
         return (
           <div className="sagent" key={a.key}>
             <div className="top">
               <span className="nm">{a.name}</span>
               <span className="chip">→ {a.label}</span>
-              <span className={pr ? 'chip filled' : 'chip'}>{pr ? 'PROPOSED' : 'NO PROPOSAL'}</span>
+              <span className={pr && res?.verified ? 'chip filled' : 'chip'}>{chip}</span>
             </div>
             <div className="q">
               operator value now: <b>{paramText(site, a.param)}</b>
             </div>
             <div className="rd">EVIDENCE · {a.evidence}</div>
-            <div className="rd">VERIFIER · {a.verifier}</div>
-            <div className={pr ? 'sverdict filled' : 'sverdict'}>
-              {pr
-                ? `${pr.rationale || 'no rationale given'}\n\nproposes: ${proposalText(pr.value, a.param)}`
-                : 'no proposal — no reasoner is attached in this build'}
+
+            <div className={res ? 'sverdict filled' : 'sverdict'}>
+              {!res ? (
+                'no proposal yet — RUN SWARM to put the agents over the current evidence'
+              ) : res.error ? (
+                `agent failed: ${res.error}`
+              ) : (
+                <>
+                  {res.abstained ? (
+                    <b>ABSTAINED — no admissible evidence for this parameter</b>
+                  ) : (
+                    <b>proposes: {proposalText(res.value as ProposalValue, a.param)}</b>
+                  )}
+                  {`  ·  self-confidence ${res.selfConfidence}  ·  ${(res.ms / 1000).toFixed(1)}s`}
+                  <div style={{ marginTop: 5 }}>{res.rationale}</div>
+                  {res.evidenceUsed.length > 0 ? (
+                    <div className="scited">cited: {res.evidenceUsed.join('  ')}</div>
+                  ) : null}
+                  <div style={{ marginTop: 6 }}>
+                    {res.verdicts.map((v, i) => (
+                      <div className={VCLASS[v.status]} key={i}>
+                        {MARK[v.status]} {v.check}: {v.detail}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
+
             <button
               className="btn sbtn"
-              disabled={!pr || !site}
+              disabled={!pr || !site || !res?.verified || res?.abstained}
+              title={
+                res && !res.verified
+                  ? 'a verifier failed — review the proposal before applying it'
+                  : res?.abstained
+                    ? 'the agent abstained, so there is nothing to apply'
+                    : 'apply this value to the slider and log the override'
+              }
               onClick={() => apply(a.key)}
             >
               APPLY TO SLIDER
@@ -210,10 +343,6 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
       <div className="ghead">WHAT THIS IS NOT</div>
       <ul className="lim">
         <li>
-          Not a running swarm. No backend, no API key, no network call — <b>COPY CONTEXT</b> puts the
-          exact payload on the clipboard so it can be reasoned over elsewhere and pasted back in.
-        </li>
-        <li>
           <b>q — P(trapped alive) has no agent.</b> Nothing in an exterior scan evidences whether an
           occupant is alive, so it is left wholly to the operator rather than given a
           plausible-looking number. The gap is deliberate.
@@ -222,7 +351,16 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
           A proposal is inert until an operator applies it. Applying is an operator decision, logged
           with the value it replaced.
         </li>
-        <li>A verifier is a cheap disagreement check, not a proof. It catches only the failure it was built for.</li>
+        <li>
+          A verifier is a cheap disagreement check, not a proof. <b>Unverified is not a pass</b> — it
+          means the evidence to check that claim is not in the payload at all, which is the honest
+          state for extraction probability (no route network) and occupancy (no registry).
+        </li>
+        <li>
+          Agents read the derived geometry, never the raw cloud. They inherit every limit of the
+          extraction: exterior surfaces only, debris volume assuming solid piles, and uncalibrated
+          scale unless you set it.
+        </li>
       </ul>
     </>
   );

@@ -139,3 +139,14 @@ ul.lim li{margin-bottom:6px}
 .sctx{font-family:var(--mono);font-size:9.5px;color:var(--dim);line-height:1.5;background:var(--sunk);
   border:1px solid var(--line);border-radius:2px;padding:8px 9px;margin-bottom:10px;word-break:break-word}
 .sctx b{color:var(--fg)}
+
+/* swarm results */
+.snotes{width:100%;background:var(--sunk);border:1px solid var(--line);color:var(--fg);
+  padding:6px 7px;border-radius:3px;font-family:var(--sans);font-size:11.5px;
+  resize:vertical;min-height:46px;line-height:1.45}
+.snotes:focus{outline:none;border-color:var(--accent)}
+.vline{font-family:var(--mono);font-size:9.5px;line-height:1.5;margin-top:2px;word-break:break-word}
+.vline.pass{color:#6ee7a8}
+.vline.fail{color:#ff6b6b}
+.vline.unver{color:var(--dim)}
+.scited{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:5px;word-break:break-all;line-height:1.5}
