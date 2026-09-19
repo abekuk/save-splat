@@ -44,20 +44,14 @@ export default function Landing({
 
         <div className="pitch">
           <h1>Measurable 3D structure.</h1>
-          <p className="sub">
-            Drop a gaussian splat. Get wall verticality, slab angles and debris volume — not a mesh.
-          </p>
-
           <div className="cta">
             <button className="primary" onClick={() => fileRef.current?.click()}>
-              Upload a .ply
+              Upload splat
             </button>
             <button className="ghost" onClick={onDemo}>
-              or open the demo scan
+              View demo
             </button>
           </div>
-          <p className="drophint">or drop a file anywhere on this page</p>
-
           <input
             ref={fileRef}
             type="file"
