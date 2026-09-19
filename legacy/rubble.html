@@ -1,0 +1,2865 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rubble — post-disaster triage viewer</title>
+<style>
+:root{
+  --bg:#0a0c10; --panel:#15181d; --panel2:#1b1f26; --sunk:#101319; --line:#2a2f38;
+  --fg:#e6e9ee; --dim:#8b93a1; --accent:#ff6b35; --amber:#ffb020;
+  --r1:#ff3b30; --r2:#ff8a1f; --r3:#ffc21f;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:13px;overflow:hidden;
+     -webkit-text-size-adjust:100%}
+#app{display:flex;height:100%;width:100%}
+
+/* ---------- 3D view ---------- */
+#view{position:relative;flex:1 1 auto;min-width:0;overflow:hidden;
+      background:radial-gradient(1100px 760px at 50% 34%, #141821 0%, #07080b 72%)}
+canvas#gl{display:block;width:100%;height:100%;touch-action:none;cursor:default}
+body.marking canvas#gl{cursor:crosshair}
+
+#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.label{position:absolute;left:0;top:0;transform:translate(-50%,-150%);pointer-events:auto;cursor:pointer;
+  font-family:var(--mono);font-size:11px;line-height:1;padding:3px 6px;border-radius:3px;white-space:nowrap;
+  background:rgba(10,12,16,.86);border:1px solid var(--accent);color:var(--accent);user-select:none}
+.label.low{border-color:var(--amber);color:var(--amber)}
+.label.sel{background:var(--accent);color:#0a0c10;border-color:#fff}
+.label.low.sel{background:var(--amber);color:#0a0c10;border-color:#fff}
+
+#topbar{position:absolute;top:0;left:0;right:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
+  padding:8px 10px;background:linear-gradient(180deg,rgba(10,12,16,.92),rgba(10,12,16,0));pointer-events:none}
+#topbar>*{pointer-events:auto}
+.brand{font-family:var(--mono);letter-spacing:.18em;font-size:12px;color:var(--accent);margin-right:4px;white-space:nowrap}
+.brand span{color:var(--dim);letter-spacing:.08em}
+.sep{width:1px;height:18px;background:var(--line);margin:0 2px}
+
+#statusbar{position:absolute;left:10px;bottom:10px;max-width:62%;font-family:var(--mono);font-size:10.5px;
+  color:var(--dim);background:rgba(8,10,14,.78);border:1px solid var(--line);padding:5px 8px;border-radius:3px}
+#hintbar{position:absolute;right:10px;bottom:10px;font-family:var(--mono);font-size:10.5px;color:var(--accent);
+  background:rgba(8,10,14,.82);border:1px solid var(--accent);padding:5px 8px;border-radius:3px;display:none}
+#hintbar.on{display:block}
+
+/* ---------- buttons ---------- */
+.btn{background:#1b1f26;border:1px solid var(--line);color:var(--fg);font-family:var(--mono);font-size:11px;
+  padding:6px 9px;border-radius:3px;cursor:pointer;letter-spacing:.05em;white-space:nowrap}
+.btn:hover{border-color:#3d4652}
+.btn em{font-style:normal;color:var(--dim);margin-left:4px}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#0a0c10}
+.btn.on em{color:rgba(10,12,16,.65)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#0a0c10;font-weight:600}
+.btn.danger{color:#ff6b6b}
+.btn.slot{min-width:34px;text-align:center}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* ---------- side panel ---------- */
+#panel{width:340px;flex:0 0 340px;min-width:0;background:var(--panel);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0}
+#tabs{display:flex;border-bottom:1px solid var(--line);flex:0 0 auto}
+#tabs button{flex:1;padding:11px 2px;background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);
+  font-family:var(--mono);font-size:11px;letter-spacing:.12em;cursor:pointer}
+#tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+#panes{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;min-height:0}
+.pane{display:none;padding:12px}
+.pane.on{display:block}
+#exports{flex:0 0 auto;border-top:1px solid var(--line);padding:8px;display:flex;gap:6px}
+#exports .btn{flex:1}
+
+.empty{color:var(--dim);font-size:12px;line-height:1.55;border:1px dashed var(--line);padding:12px;border-radius:3px}
+.empty b{color:var(--fg)}
+.row{display:flex;gap:6px}
+.row .btn{flex:1}
+
+/* ---------- queue ---------- */
+.qhead{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim);margin:0 0 8px}
+.qrow{border:1px solid var(--line);border-left:3px solid var(--line);background:var(--panel2);
+  padding:8px;margin-bottom:6px;cursor:pointer;border-radius:2px}
+.qrow:hover{border-color:#3d4652}
+.qrow.rk1{border-left-color:var(--r1)}
+.qrow.rk2{border-left-color:var(--r2)}
+.qrow.rk3{border-left-color:var(--r3)}
+.qrow.sel{background:#232833;box-shadow:inset 0 0 0 1px var(--accent)}
+.qrow.low{border-left-color:var(--amber)}
+.qrow .top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.qrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.qrow .rank{font-family:var(--mono);color:var(--dim);font-size:11px;min-width:18px}
+.qrow .rho{font-family:var(--mono);color:var(--accent);font-size:12.5px}
+.qrow.low .rho{color:var(--amber)}
+.qrow .meta{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:5px;line-height:1.45;word-break:break-word}
+.badge{font-family:var(--mono);font-size:9px;color:#0a0c10;background:var(--amber);padding:1px 4px;
+  border-radius:2px;margin-left:6px;letter-spacing:.06em;vertical-align:1px}
+
+/* ---------- assess form ---------- */
+.field{margin-bottom:15px}
+.field .lab{display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.field .lab b{font-weight:600;font-size:12.5px}
+.field .lab .val{font-family:var(--mono);color:var(--accent);font-size:12px}
+.note{color:var(--dim);font-size:10.5px;line-height:1.45;margin:4px 0 7px}
+.note b{color:#c3cad6;font-weight:600}
+input[type=range]{width:100%;accent-color:var(--accent);background:transparent;margin:0}
+input[type=text]{width:100%;background:var(--sunk);border:1px solid var(--line);color:var(--fg);
+  padding:7px 8px;border-radius:3px;font-family:var(--sans);font-size:13px;margin-top:5px}
+input[type=text]:focus{outline:none;border-color:var(--accent)}
+.seg{display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg button{flex:1;padding:7px 2px;background:var(--sunk);border:0;border-right:1px solid var(--line);
+  color:var(--dim);font-family:var(--mono);font-size:10px;letter-spacing:.04em;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--accent);color:#0a0c10}
+.seg button.on.amber{background:var(--amber)}
+.readout{border:1px solid var(--line);background:var(--sunk);padding:10px;border-radius:3px;
+  font-family:var(--mono);font-size:11px;line-height:1.7;margin:4px 0 12px;overflow-x:auto}
+.readout .big{font-size:19px;color:var(--accent);display:block;margin-top:6px}
+.readout .big.amber{color:var(--amber)}
+.readout .unit{font-size:9.5px;letter-spacing:.14em;color:var(--dim);display:block;margin-top:2px}
+.readout .dim{color:var(--dim)}
+
+/* ---------- model pane ---------- */
+.h{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:var(--accent);margin:16px 0 6px}
+.h:first-child{margin-top:0}
+.pane p{line-height:1.55;color:#c3cad6;margin:0 0 9px}
+.formula{font-family:var(--mono);background:var(--sunk);border:1px solid var(--line);padding:9px 10px;
+  border-radius:3px;margin:6px 0 10px;font-size:11.5px;overflow-x:auto;white-space:nowrap;color:var(--fg)}
+table.lam{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;margin:4px 0 8px}
+table.lam th,table.lam td{border:1px solid var(--line);padding:5px 7px;text-align:left}
+table.lam th{color:var(--dim);font-weight:400;letter-spacing:.08em;font-size:10px;background:var(--sunk)}
+table.lam td.n{color:var(--accent)}
+ul.lim{margin:0 0 8px;padding-left:16px;color:#c3cad6;line-height:1.55}
+ul.lim li{margin-bottom:6px}
+.warn{border:1px solid var(--amber);border-left-width:3px;background:rgba(255,176,32,.07);
+  padding:9px 10px;border-radius:3px;color:#e8d5b5;line-height:1.5;font-size:12px}
+
+/* ---------- geometry overlay + GEO tab ---------- */
+.plabel{position:absolute;left:0;top:0;transform:translate(-50%,-50%);pointer-events:auto;cursor:pointer;
+  font-family:var(--mono);font-size:9.5px;line-height:1;padding:2px 4px;border-radius:2px;white-space:nowrap;
+  background:rgba(10,12,16,.74);border:1px solid #8b93a1;color:#8b93a1;user-select:none;letter-spacing:.04em}
+.gsum{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:8px}
+.gsum>div{background:var(--sunk);border:1px solid var(--line);border-radius:2px;padding:6px 4px;text-align:center;min-width:0}
+.gsum span{display:block;font-family:var(--mono);font-size:8px;letter-spacing:.06em;color:var(--dim);
+  margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gsum b{font-family:var(--mono);font-size:13px;color:var(--fg)}
+.gnote{color:var(--dim);font-size:10.5px;line-height:1.45;margin:0 0 12px}
+.ghead{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--accent);margin:15px 0 6px}
+.gempty{color:var(--dim);font-size:11px;border:1px dashed var(--line);padding:9px;border-radius:2px;margin-bottom:6px}
+.grow{border:1px solid var(--line);background:var(--panel2);padding:7px 8px;margin-bottom:5px;border-radius:2px;cursor:pointer}
+.grow:hover{border-color:#3d4652}
+.grow.sel{box-shadow:inset 0 0 0 1px var(--accent)}
+.grow.deb{cursor:default}
+.grow .top{display:flex;align-items:baseline;gap:7px}
+.grow .tag{font-family:var(--mono);font-size:9.5px;border:1px solid;border-radius:2px;padding:1px 4px;flex:0 0 auto}
+.grow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim);font-size:11px}
+.grow .num{font-family:var(--mono);font-size:13px}
+.grow .meta{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:4px;line-height:1.45;word-break:break-word}
+.prog{font-family:var(--mono);font-size:11px;color:var(--dim);padding:8px 0}
+.prog .bar{display:block;height:3px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
+.prog .bar i{display:block;height:100%;background:var(--accent);transition:width .15s linear}
+.scalebox{display:flex;align-items:center;gap:8px;margin:0 0 10px;flex-wrap:wrap}
+.scalebox label{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.05em}
+.scalebox input{width:84px;background:var(--sunk);border:1px solid var(--line);color:var(--fg);
+  padding:5px 7px;border-radius:3px;font-family:var(--mono);font-size:12px}
+.scalebox input:focus{outline:none;border-color:var(--accent)}
+.legend{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 10px;font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.evbox{border:1px solid var(--line);border-left:3px solid var(--accent);background:var(--sunk);
+  padding:8px 9px;border-radius:2px;margin:0 0 12px;font-size:11px;line-height:1.5;color:#c3cad6}
+.evbox .t{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--dim);margin-bottom:4px}
+.evbox b{font-family:var(--mono);color:var(--fg)}
+
+
+/* ---------- load progress overlay ---------- */
+#loadbox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(430px,calc(100% - 32px));
+  background:rgba(12,15,20,.96);border:1px solid var(--line);border-radius:4px;padding:14px 15px;
+  display:none;z-index:6;box-shadow:0 18px 50px rgba(0,0,0,.55)}
+#loadbox.on{display:block}
+#loadbox .lt{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--accent);margin-bottom:7px}
+#loadbox .lf{font-family:var(--mono);font-size:11.5px;color:var(--fg);word-break:break-all;line-height:1.4}
+#loadbox .lm{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px;line-height:1.5;min-height:15px}
+#loadbox .bar{display:block;height:4px;background:var(--line);border-radius:2px;margin-top:10px;overflow:hidden}
+#loadbox .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .12s linear}
+
+/* ---------- swarm pane ---------- */
+#tabs button{letter-spacing:.08em;font-size:10.5px;padding-left:1px;padding-right:1px}
+.sagent{border:1px solid var(--line);background:var(--panel2);padding:8px 9px;margin-bottom:6px;border-radius:2px}
+.sagent .top{display:flex;align-items:baseline;gap:7px}
+.sagent .nm{font-family:var(--mono);font-size:11px;color:var(--fg);letter-spacing:.09em;flex:1;min-width:0}
+.chip{font-family:var(--mono);font-size:9px;letter-spacing:.08em;border:1px solid var(--line);color:var(--dim);
+  border-radius:2px;padding:1px 4px;flex:0 0 auto}
+.chip.filled{border-color:var(--accent);color:var(--accent)}
+.sagent .q{font-size:11px;color:#c3cad6;line-height:1.5;margin-top:5px}
+.sagent .rd{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:5px;line-height:1.45;word-break:break-word}
+.sverdict{border:1px dashed var(--line);border-radius:2px;padding:7px 8px;margin-top:7px;font-size:11px;
+  line-height:1.5;color:var(--dim);white-space:pre-wrap;word-break:break-word}
+.sverdict.filled{border-style:solid;border-left:3px solid var(--accent);background:var(--sunk);color:#c3cad6}
+.sbtn{margin-top:7px;padding:4px 7px;font-size:9.5px}
+.sctx{font-family:var(--mono);font-size:9.5px;color:var(--dim);line-height:1.5;background:var(--sunk);
+  border:1px solid var(--line);border-radius:2px;padding:8px 9px;margin-bottom:10px;word-break:break-word}
+.sctx b{color:var(--fg)}
+
+/* ---------- narrow layout ---------- */
+@media (max-width:760px){
+  #app{flex-direction:column}
+  #view{flex:0 0 48%;height:48%}
+  #panel{width:100%;flex:1 1 auto;border-left:0;border-top:1px solid var(--line)}
+  #statusbar{max-width:calc(100% - 20px);bottom:8px;left:8px}
+  #hintbar{left:8px;right:8px;bottom:36px;text-align:center}
+  .brand{font-size:11px;letter-spacing:.1em}
+  .btn{padding:5px 7px;font-size:10px}
+  #topbar{gap:4px;padding:6px}
+  #tabs button{letter-spacing:.06em;font-size:10px}
+  .gsum{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===================== 3D VIEW ===================== -->
+  <div id="view">
+    <canvas id="gl"></canvas>
+    <div id="labels"></div>
+
+    <div id="topbar">
+      <div class="brand">RUBBLE <span>/ triage</span></div>
+      <button class="btn" id="btn-load">LOAD .PLY</button>
+      <button class="btn" id="btn-syn">SYNTHETIC SCENE</button>
+      <button class="btn" id="btn-mark">&#8853; MARK<em>m</em></button>
+      <span class="sep"></span>
+      <button class="btn slot on" id="slot-A" title="Scan slot A">A</button>
+      <button class="btn slot" id="slot-B" title="Scan slot B">B</button>
+      <span class="sep"></span>
+      <button class="btn" id="btn-home">RESET VIEW</button>
+      <button class="btn" id="btn-flip" title="Cycle the up-axis convention: Y-up, Y-down, Z-up, Z-down">UP-AXIS<em>f</em></button>
+      <span class="sep"></span>
+      <button class="btn" id="btn-geom" title="Fit planes, verticality and debris volume">GEOMETRY<em>g</em></button>
+      <button class="btn on" id="btn-planes" title="Show or hide the fitted planes">PLANES</button>
+    </div>
+
+    <div id="statusbar">ready &mdash; load a .ply, or click SYNTHETIC SCENE</div>
+    <div id="hintbar"></div>
+
+    <div id="loadbox">
+      <div class="lt" id="load-title">READING</div>
+      <div class="lf" id="load-file">&mdash;</div>
+      <div class="lm" id="load-msg"></div>
+      <span class="bar"><i id="load-bar"></i></span>
+    </div>
+  </div>
+
+  <!-- ===================== SIDE PANEL ===================== -->
+  <div id="panel">
+    <div id="tabs">
+      <button data-tab="queue" class="on">QUEUE</button>
+      <button data-tab="assess">ASSESS</button>
+      <button data-tab="geo">GEO</button>
+      <button data-tab="swarm">SWARM</button>
+      <button data-tab="model">MODEL</button>
+    </div>
+
+    <div id="panes">
+
+      <!-- ---------- QUEUE ---------- -->
+      <div class="pane on" id="pane-queue">
+        <div class="qhead">DISPATCH QUEUE &mdash; DESC BY &rho;</div>
+        <div id="queue"></div>
+      </div>
+
+      <!-- ---------- ASSESS ---------- -->
+      <div class="pane" id="pane-assess">
+        <div id="assess-empty" class="empty">
+          No site selected.<br><br>
+          Press <b>m</b> (or the <b>&#8853; MARK</b> button), then click a structure in the 3D view to place
+          an assessment marker. Selecting a row in the <b>QUEUE</b> tab also opens it here.
+        </div>
+
+        <div id="assess-body" hidden>
+          <div class="field">
+            <div class="lab"><b>Site name</b><span class="val" id="f-id">#0</span></div>
+            <input type="text" id="f-name" maxlength="40" spellcheck="false">
+          </div>
+
+          <div class="field">
+            <div class="lab"><b>n &mdash; occupancy</b><span class="val" id="v-n">8</span></div>
+            <div class="note">Persons believed inside this structure when it came down. <b>This is the weakest
+              input and it is not derived from the scan geometry</b> &mdash; it comes from witnesses, rosters,
+              neighbours or time-of-day occupancy estimates.</div>
+            <input type="range" id="f-n" min="0" max="50" step="1">
+          </div>
+
+          <div class="field">
+            <div class="lab"><b>q &mdash; P(trapped alive)</b><span class="val" id="v-q">0.35</span></div>
+            <div class="note">Probability an occupant is trapped and still alive now. From void-space evidence,
+              hours since collapse, weather exposure, and any contact &mdash; voice, tapping, phone ping, canine alert.</div>
+            <input type="range" id="f-q" min="0" max="1" step="0.01">
+          </div>
+
+          <div class="field">
+            <div class="lab"><b>r &mdash; P(extraction)</b><span class="val" id="v-r">0.60</span></div>
+            <div class="note">Probability a committed crew actually gets them out alive. From access route,
+              debris type, cutting and shoring burden, secondary-collapse risk and crew capability.</div>
+            <input type="range" id="f-r" min="0" max="1" step="0.01">
+          </div>
+
+          <div class="field">
+            <div class="lab"><b>&tau; &mdash; crew-hours</b><span class="val" id="v-tau">4.0</span></div>
+            <div class="note">Crew-hours this site is expected to consume before the outcome is decided.
+              From debris volume to move, breaching and shoring required, and site access.</div>
+            <input type="range" id="f-tau" min="0.5" max="24" step="0.5">
+          </div>
+
+          <div class="field">
+            <div class="lab"><b>Collapse type</b><span class="val" id="v-lam">&lambda; 0.150 /h</span></div>
+            <div class="note">Sets the survival decay rate &lambda;. Pancake voids are scarce and crush loads high;
+              lean-to and V-void geometry holds survivable space far longer.</div>
+            <div class="seg" id="f-type">
+              <button data-v="pancake">PANCAKE</button>
+              <button data-v="mixed">MIXED</button>
+              <button data-v="lean">LEAN-TO</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="lab"><b>Confidence</b><span class="val" id="v-conf">MED</span></div>
+            <div class="note">Evidence-quality flag for the operator. <b>LOW</b> renders amber everywhere and
+              badges the queue row &mdash; it does <b>not</b> enter &rho;.</div>
+            <div class="seg" id="f-conf">
+              <button data-v="low">LOW</button>
+              <button data-v="med">MED</button>
+              <button data-v="high">HIGH</button>
+            </div>
+          </div>
+
+          <div class="readout" id="readout"></div>
+          <div id="geo-evidence"></div>
+
+          <div class="row">
+            <button class="btn primary" id="btn-fly">FLY TO</button>
+            <button class="btn danger" id="btn-del">DELETE SITE</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- GEO ---------- -->
+      <div class="pane" id="pane-geo">
+        <div id="geo-empty" class="empty">
+          No geometry extracted yet.<br><br>
+          Press <b>g</b> or the <b>GEOMETRY</b> button to fit planes to the loaded scan. You get
+          wall verticality (the drift ratio structural engineers actually use), slab and lean-to
+          angles, and debris volume &mdash; measured facts rather than a mesh.
+        </div>
+        <div id="geo-body" hidden>
+          <div id="geo-summary"></div>
+          <div class="scalebox">
+            <label for="f-scale">1 SCAN UNIT =</label>
+            <input type="number" id="f-scale" min="0.0001" step="0.01" value="1">
+            <label>METRES</label>
+          </div>
+          <div class="gnote">Angles and drift ratios are scale-free and hold whatever this is set to.
+            Areas and volumes do not &mdash; they are only metric if this figure is right. ARKit-derived
+            exports (Scaniverse, Polycam) are usually already 1 unit = 1 m.</div>
+          <div class="legend">
+            <span><i style="background:#ff3b30"></i>SEVERE &ge;2%</span>
+            <span><i style="background:#ff8a1f"></i>MODERATE 1&ndash;2%</span>
+            <span><i style="background:#ffc21f"></i>MINOR 0.5&ndash;1%</span>
+            <span><i style="background:#7d8896"></i>COSMETIC &lt;0.5%</span>
+            <span><i style="background:#4a9eff"></i>SLAB</span>
+            <span><i style="background:#35d0c0"></i>INCLINED</span>
+          </div>
+          <div id="geo-planes"></div>
+          <div id="geo-debris"></div>
+          <div class="ghead">WHAT THIS IS NOT</div>
+          <ul class="lim">
+            <li>Not a mesh. Planes, angles and volumes are the measurable facts; a surface adds nothing
+                to an assessment and hides the residual.</li>
+            <li>A splat captures <b>exterior surfaces</b>. Debris volume is a column measure that assumes
+                each pile is solid down to the ground plane &mdash; overhangs and interior voids are invisible.</li>
+            <li>Plane extent is trimmed to the 1st&ndash;99th percentile of its own points; <b>fill%</b> says
+                how much of that rectangle is really surface.</li>
+            <li>A thick element is reported as its <b>two faces</b>, not one plane &mdash; a 1&nbsp;m wall gives two
+                near-parallel patches about 1&nbsp;m apart. Fits closer together than the material they share
+                are merged into one.</li>
+            <li>These are inputs an assessor reads. They do not move the sliders by themselves.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ---------- SWARM ---------- -->
+      <div class="pane" id="pane-swarm">
+        <div class="h">AGENT SWARM &mdash; SHELL</div>
+        <p>One agent per ranking parameter, each with its own evidence source and a cheap verifier.
+           The geometry layer is the evidence substrate. <b>No reasoning runs in this build</b> &mdash; the
+           cards are the contract, and every proposal slot stays empty until a reasoner is attached.</p>
+        <div class="warn" style="margin-bottom:12px">
+          <b>Assisted assessment, not autonomous dispatch.</b> An agent proposes; the operator applies.
+          Sliders stay operator-set, and every override is recorded in the log below.
+        </div>
+
+        <div class="ghead">CONTEXT HANDED TO EVERY AGENT</div>
+        <div class="sctx" id="swarm-ctx"></div>
+        <div class="row" style="margin-bottom:12px">
+          <button class="btn" id="btn-swarm-copy">COPY CONTEXT</button>
+          <button class="btn" id="btn-swarm-clear">CLEAR PROPOSALS</button>
+        </div>
+
+        <div class="ghead">AGENTS</div>
+        <div id="swarm-agents"></div>
+
+        <div class="ghead">OVERRIDE LOG</div>
+        <div id="swarm-log"></div>
+
+        <div class="ghead">WHAT THIS IS NOT</div>
+        <ul class="lim">
+          <li>Not a running swarm. No backend, no API key, no network call &mdash; <b>COPY CONTEXT</b> puts the
+              exact payload on the clipboard so it can be reasoned over elsewhere and pasted back in.</li>
+          <li><b>q &mdash; P(trapped alive) has no agent.</b> Nothing in an exterior scan evidences whether an
+              occupant is alive, so it is left wholly to the operator rather than given a plausible-looking
+              number. The gap is deliberate.</li>
+          <li>A proposal is inert until an operator applies it. Applying is an operator decision, logged
+              with the value it replaced.</li>
+          <li>A verifier is a cheap disagreement check, not a proof. It catches only the failure it was built for.</li>
+        </ul>
+      </div>
+
+      <!-- ---------- MODEL ---------- -->
+      <div class="pane" id="pane-model">
+        <div class="h">SURVIVAL DECAY</div>
+        <p>Survival probability for entrapped victims decays approximately exponentially. Expected lives saved by
+           dispatching a crew to site <i>i</i> at time <i>t</i>:</p>
+        <div class="formula">V<sub>i</sub>(t) = n<sub>i</sub> &middot; q<sub>i</sub> &middot; r<sub>i</sub> &middot; e<sup>&minus;&lambda;<sub>i</sub> t</sup></div>
+
+        <div class="h">GREEDY INDEX RULE</div>
+        <p>Optimal scheduling of <i>K</i> crews across competing sites is NP-hard. Rank descending by expected
+           lives per crew-hour, weighted by urgency:</p>
+        <div class="formula">&rho;<sub>i</sub> = ( n<sub>i</sub> &middot; q<sub>i</sub> &middot; r<sub>i</sub> &middot; &lambda;<sub>i</sub> ) / &tau;<sub>i</sub></div>
+        <p>The denominator is guarded at 0.1 crew-hours, so a slider at minimum cannot divide by zero.
+           Confidence is an evidence flag and is deliberately absent from &rho;.</p>
+
+        <div class="h">&lambda; BY COLLAPSE TYPE</div>
+        <table class="lam">
+          <tr><th>TYPE</th><th>&lambda; (/hour)</th><th>VOID CHARACTER</th></tr>
+          <tr><td>PANCAKE</td><td class="n">0.35</td><td>Slabs stacked flat; voids scarce, crush loads high</td></tr>
+          <tr><td>MIXED</td><td class="n">0.15</td><td>Partial pancake with surviving structure</td></tr>
+          <tr><td>LEAN-TO</td><td class="n">0.06</td><td>Slab resting on a wall or debris; large stable voids</td></tr>
+        </table>
+        <p>Half-life of survival probability is ln&nbsp;2 / &lambda;: about <b>2.0&nbsp;h</b> for pancake,
+           <b>4.6&nbsp;h</b> for mixed, <b>11.6&nbsp;h</b> for lean-to.</p>
+
+        <div class="h">LIMITS</div>
+        <ul class="lim">
+          <li>A splat scan captures <b>exterior surfaces</b>. Survivable voids are <b>interior</b>. The scan tells
+              you where a structure failed and how, not where anyone is.</li>
+          <li><b>Occupancy is not geometric.</b> n is a human estimate entered by the operator; it dominates &rho;
+              linearly and is the largest source of error in the ranking.</li>
+          <li>The point cloud is a render of the splat, not a true Gaussian rasterization &mdash; small features
+              and thin voids will be under-represented.</li>
+          <li>A/B scan slots are a <b>visual toggle only</b>. There is no alignment, registration, or geometric
+              change detection between them.</li>
+          <li>No metric scale calibration. Distances are in scan units.</li>
+        </ul>
+        <div class="warn">
+          Output is a <b>ranked prior for incident command review</b>. It is not an autonomous dispatch order.
+          Every value in &rho; is an operator estimate; the ordering is only as good as those estimates.
+        </div>
+      </div>
+
+    </div>
+
+    <div id="exports">
+      <button class="btn" id="btn-json">EXPORT JSON</button>
+      <button class="btn" id="btn-csv">EXPORT CSV</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file" accept=".ply,application/octet-stream" hidden>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* =====================================================================
+   Rubble — post-disaster triage viewer
+   Single file, no build step. One network request (three.js r128).
+   Unspecified details are resolved to the simpler option and noted.
+   ===================================================================== */
+
+/* ---------- small helpers ---------- */
+function $(s){ return document.querySelector(s); }
+function clamp(v,a,b){ return Math.min(b, Math.max(a, v)); }
+function clamp01(v){ return clamp(v,0,1); }
+var statusEl = $('#statusbar'), hintEl = $('#hintbar');
+function setStatus(t){ statusEl.textContent = t; }
+function setHint(t){ if (t){ hintEl.textContent = t; hintEl.classList.add('on'); } else { hintEl.classList.remove('on'); } }
+function fmtBytes(b){ return b >= 1048576 ? (b/1048576).toFixed(1)+' MB' : (b/1024).toFixed(0)+' KB'; }
+function fmtInt(n){ return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+if (typeof THREE === 'undefined') {
+  setStatus('three.js failed to load — the one required CDN script did not arrive.');
+  alert('Rubble could not load three.js.\n\nThis page makes exactly one network request: three.js r128 from ' +
+        'cdnjs.cloudflare.com. Check your connection and reload. Everything else runs locally.');
+  return;
+}
+
+/* =====================================================================
+   1. RANKING MODEL
+   ===================================================================== */
+var LAMBDA = { pancake: 0.35, mixed: 0.15, lean: 0.06 };  // per hour
+
+function rho(s) {
+  return (s.n * s.q * s.r * LAMBDA[s.type]) / Math.max(0.1, s.tau);
+}
+
+var TYPE_LABEL = { pancake:'PANCAKE', mixed:'MIXED', lean:'LEAN-TO' };
+var DEFAULTS = { n:8, q:0.35, r:0.60, type:'mixed', tau:4, conf:'med' };
+
+/* =====================================================================
+   2. SCENE / RENDERER
+   ===================================================================== */
+var view = $('#view'), canvas = $('#gl'), labelLayer = $('#labels');
+var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setClearColor(0x000000, 0);
+
+var scene = new THREE.Scene();
+var camera = new THREE.PerspectiveCamera(55, 1, 0.01, 4000);
+var raycaster = new THREE.Raycaster();
+
+function resize(){
+  var w = Math.max(1, view.clientWidth), h = Math.max(1, view.clientHeight);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+/* =====================================================================
+   3. CUSTOM ORBIT CONTROLS (spherical; OrbitControls is absent from the r128 CDN build)
+   ===================================================================== */
+var orbit = { target: new THREE.Vector3(0,0,0), radius: 24, theta: 0.7, phi: 1.15 };
+var HOME = { radius: 24, theta: 0.7, phi: 1.15, target: new THREE.Vector3(0,0,0) };
+var flyGoal = null;   // Vector3 the target eases toward, for "fly to"
+
+function applyOrbit(){
+  var sp = Math.sin(orbit.phi), cp = Math.cos(orbit.phi);
+  camera.position.set(
+    orbit.target.x + orbit.radius * sp * Math.sin(orbit.theta),
+    orbit.target.y + orbit.radius * cp,
+    orbit.target.z + orbit.radius * sp * Math.cos(orbit.theta)
+  );
+  camera.lookAt(orbit.target);
+}
+
+var ptrs = new Map();      // active pointers, for pinch
+var drag = null;           // {id, pan}
+var travel = 0;            // |dx|+|dy| accumulated — click only if < 5px
+var pinchDist = 0;
+
+function twoDist(){
+  var a = null, b = null;
+  ptrs.forEach(function(p){ if (!a) a = p; else if (!b) b = p; });
+  if (!a || !b) return 0;
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+canvas.addEventListener('pointerdown', function(e){
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size === 2){ pinchDist = twoDist(); drag = null; travel = 999; return; }
+  drag = { id: e.pointerId, pan: (e.button === 2 || e.shiftKey) };
+  travel = 0;
+});
+
+canvas.addEventListener('pointermove', function(e){
+  var p = ptrs.get(e.pointerId);
+  if (!p) return;
+  var dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+
+  if (ptrs.size >= 2){                       // pinch zoom
+    var d = twoDist();
+    if (pinchDist > 0 && d > 0) orbit.radius = clamp(orbit.radius * (pinchDist / d), 0.3, 600);
+    pinchDist = d; travel = 999;
+    return;
+  }
+  if (!drag || drag.id !== e.pointerId) return;
+  travel += Math.abs(dx) + Math.abs(dy);
+
+  if (drag.pan) {
+    panBy(dx, dy);
+  } else {
+    orbit.theta -= dx * 0.006;
+    orbit.phi    = clamp(orbit.phi - dy * 0.006, 0.05, Math.PI - 0.05);
+  }
+});
+
+function endPointer(e){
+  var wasDrag = drag && drag.id === e.pointerId;
+  ptrs.delete(e.pointerId);
+  if (ptrs.size < 2) pinchDist = 0;
+  if (wasDrag){
+    drag = null;
+    if (travel < 5) handleClick(e);          // click vs drag discrimination
+  }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+canvas.addEventListener('wheel', function(e){
+  e.preventDefault();
+  orbit.radius = clamp(orbit.radius * (1 + Math.sign(e.deltaY) * 0.11), 0.3, 600);
+}, { passive: false });
+
+var _right = new THREE.Vector3(), _up = new THREE.Vector3();
+function panBy(dx, dy){
+  camera.updateMatrixWorld();
+  _right.setFromMatrixColumn(camera.matrix, 0);
+  _up.setFromMatrixColumn(camera.matrix, 1);
+  var k = orbit.radius * 0.0016;
+  orbit.target.addScaledVector(_right, -dx * k);
+  orbit.target.addScaledVector(_up,     dy * k);
+  flyGoal = null;
+}
+
+function resetView(){
+  orbit.target.copy(HOME.target);
+  orbit.radius = HOME.radius; orbit.theta = HOME.theta; orbit.phi = HOME.phi;
+  flyGoal = null;
+}
+
+/* =====================================================================
+   4. SITES / MARKERS
+   ===================================================================== */
+var sites = [];
+var nextId = 1;            // monotonic, never reused
+var nameSeq = 0;
+var selected = null;       // site id
+var markMode = false;
+var markerGeo = new THREE.SphereGeometry(1, 12, 10);
+
+function siteLetter(i){
+  var s = '';
+  i = i | 0;
+  do { s = String.fromCharCode(65 + (i % 26)) + s; i = Math.floor(i / 26) - 1; } while (i >= 0);
+  return s;
+}
+function getSite(id){ for (var i=0;i<sites.length;i++) if (sites[i].id === id) return sites[i]; return null; }
+
+function setMark(on){
+  markMode = !!on;
+  document.body.classList.toggle('marking', markMode);
+  $('#btn-mark').classList.toggle('on', markMode);
+  setHint(markMode ? 'MARKING — click a structure to place a site · ESC cancels' : '');
+}
+
+function addSite(pos){
+  var site = {
+    id: nextId++,
+    name: 'Site ' + siteLetter(nameSeq++),
+    pos: pos.clone(),
+    n: DEFAULTS.n, q: DEFAULTS.q, r: DEFAULTS.r,
+    type: DEFAULTS.type, tau: DEFAULTS.tau, conf: DEFAULTS.conf,
+    mesh: null, el: null
+  };
+
+  // depthTest off so a marker behind rubble is never lost on stage.
+  var mat = new THREE.MeshBasicMaterial({ color: 0xff6b35, depthTest: false, transparent: true, opacity: 0.95 });
+  var mesh = new THREE.Mesh(markerGeo, mat);
+  mesh.renderOrder = 10;
+  mesh.position.copy(site.pos);
+  scene.add(mesh);
+  site.mesh = mesh;
+
+  var el = document.createElement('div');
+  el.className = 'label';
+  el.textContent = '–';
+  el.addEventListener('pointerdown', function(e){ e.stopPropagation(); });
+  el.addEventListener('click', function(e){ e.stopPropagation(); selectSite(site.id); });
+  labelLayer.appendChild(el);
+  site.el = el;
+
+  sites.push(site);
+  selectSite(site.id);
+  showTab('assess');
+  setStatus('placed ' + site.name + ' — ' + sites.length + ' site' + (sites.length === 1 ? '' : 's') + ' marked');
+  return site;
+}
+
+function deleteSite(id){
+  var s = getSite(id);
+  if (!s) return;
+  scene.remove(s.mesh);
+  if (s.mesh.material) s.mesh.material.dispose();
+  if (s.el && s.el.parentNode) s.el.parentNode.removeChild(s.el);
+  sites.splice(sites.indexOf(s), 1);
+  if (selected === id) selected = null;
+  renderQueue(); syncAssess();
+  setStatus('deleted ' + s.name + ' — ' + sites.length + ' site' + (sites.length === 1 ? '' : 's') + ' remaining');
+}
+
+function selectSite(id){
+  selected = id;
+  renderQueue();
+  syncAssess();
+}
+
+function flyTo(site){
+  flyGoal = site.pos.clone();
+}
+
+/* per-frame marker upkeep: constant screen size + projected labels */
+var _v = new THREE.Vector3();
+function updateMarkers(){
+  var base = orbit.radius * 0.012;
+  for (var i = 0; i < sites.length; i++){
+    var s = sites[i];
+    var sel = (s.id === selected);
+    s.mesh.scale.setScalar(base * (sel ? 1.45 : 1));
+    s.mesh.material.color.setHex(s.conf === 'low' ? 0xffb020 : 0xff6b35);
+
+    _v.copy(s.pos).project(camera);
+    if (_v.z >= 1){ s.el.style.display = 'none'; continue; }
+    s.el.style.display = '';
+    s.el.style.left = ((_v.x * 0.5 + 0.5) * view.clientWidth) + 'px';
+    s.el.style.top  = ((-_v.y * 0.5 + 0.5) * view.clientHeight) + 'px';
+  }
+  for (var k = 0; k < planeLabels.length; k++){
+    var pl = planeLabels[k];
+    _v.copy(pl.pos).project(camera);
+    if (_v.z >= 1){ pl.el.style.display = 'none'; continue; }
+    pl.el.style.display = '';
+    pl.el.style.left = ((_v.x * 0.5 + 0.5) * view.clientWidth) + 'px';
+    pl.el.style.top  = ((-_v.y * 0.5 + 0.5) * view.clientHeight) + 'px';
+  }
+}
+
+/* =====================================================================
+   5. QUEUE
+   ===================================================================== */
+function ranked(){
+  return sites.slice().sort(function(a,b){ return rho(b) - rho(a); });
+}
+
+var queueEl = $('#queue');
+function renderQueue(){
+  var list = ranked();
+  queueEl.innerHTML = '';
+
+  if (!list.length){
+    var e = document.createElement('div');
+    e.className = 'empty';
+    e.innerHTML = 'Queue empty.<br><br>Press <b>m</b> or the <b>&#8853; MARK</b> button, then click a structure ' +
+                  'in the 3D view to place your first assessment marker. Sites rank themselves by &rho; as you ' +
+                  'score them — the order updates live.';
+    queueEl.appendChild(e);
+  }
+
+  for (var i = 0; i < list.length; i++){
+    var s = list[i], rank = i + 1, low = (s.conf === 'low');
+
+    // 3D label carries the live RANK, not the id — it changes as scores change.
+    s.el.textContent = String(rank);
+    s.el.className = 'label' + (low ? ' low' : '') + (s.id === selected ? ' sel' : '');
+
+    var row = document.createElement('div');
+    row.className = 'qrow' + (rank <= 3 ? ' rk' + rank : '') + (low ? ' low' : '') + (s.id === selected ? ' sel' : '');
+    row.innerHTML =
+      '<div class="top">' +
+        '<span class="rank">' + rank + '</span>' +
+        '<span class="nm">' + escapeHtml(s.name) + (low ? '<span class="badge">LOW CONF</span>' : '') + '</span>' +
+        '<span class="rho">' + rho(s).toFixed(3) + '</span>' +
+      '</div>' +
+      '<div class="meta">n ' + s.n + ' · q ' + s.q.toFixed(2) + ' · r ' + s.r.toFixed(2) +
+        ' · ' + TYPE_LABEL[s.type] + ' λ' + LAMBDA[s.type].toFixed(2) +
+        ' · τ ' + s.tau.toFixed(1) + 'h · conf ' + s.conf.toUpperCase() + '</div>';
+    (function(id){
+      row.addEventListener('click', function(){
+        selectSite(id);
+        var site = getSite(id);
+        if (site) flyTo(site);       // clicking a row moves the camera target to it
+      });
+    })(s.id);
+    queueEl.appendChild(row);
+  }
+}
+
+function escapeHtml(t){
+  return String(t).replace(/[&<>"']/g, function(c){
+    return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
+  });
+}
+
+/* =====================================================================
+   6. ASSESS PANE
+   ===================================================================== */
+var F = {
+  name: $('#f-name'), n: $('#f-n'), q: $('#f-q'), r: $('#f-r'), tau: $('#f-tau'),
+  type: $('#f-type'), conf: $('#f-conf'),
+  vn: $('#v-n'), vq: $('#v-q'), vr: $('#v-r'), vtau: $('#v-tau'), vlam: $('#v-lam'), vconf: $('#v-conf'),
+  id: $('#f-id'), readout: $('#readout'), body: $('#assess-body'), empty: $('#assess-empty')
+};
+
+function syncAssess(){
+  var s = getSite(selected);
+  F.body.hidden = !s;
+  F.empty.hidden = !!s;
+  if (!s) return;
+
+  F.id.textContent = '#' + s.id;
+  if (document.activeElement !== F.name) F.name.value = s.name;
+  F.n.value = s.n; F.q.value = s.q; F.r.value = s.r; F.tau.value = s.tau;
+  F.vn.textContent = s.n;
+  F.vq.textContent = s.q.toFixed(2);
+  F.vr.textContent = s.r.toFixed(2);
+  F.vtau.textContent = s.tau.toFixed(1) + ' h';
+  F.vlam.innerHTML = 'λ ' + LAMBDA[s.type].toFixed(3) + ' /h';
+  F.vconf.textContent = s.conf.toUpperCase();
+
+  segSync(F.type, s.type, false);
+  segSync(F.conf, s.conf, s.conf === 'low');
+
+  var low = (s.conf === 'low');
+  var value = rho(s);
+  F.readout.innerHTML =
+    '<span class="dim">ρ = ( n × q × r × λ ) / max(0.1, τ)</span><br>' +
+    'ρ = ( ' + s.n + ' × ' + s.q.toFixed(2) + ' × ' + s.r.toFixed(2) + ' × ' + LAMBDA[s.type].toFixed(3) +
+      ' ) / ' + Math.max(0.1, s.tau).toFixed(1) +
+    '<span class="big' + (low ? ' amber' : '') + '">' + value.toFixed(3) + '</span>' +
+    '<span class="unit">LIVES / CREW-HOUR</span>' +
+    (low ? '<br><span class="dim">LOW CONF — evidence flag only, not a factor in ρ</span>' : '');
+
+  var ev = $('#geo-evidence'), np = nearestPlane(s);
+  if (!np){ ev.innerHTML = ''; return; }
+  var pl = np.plane;
+  ev.innerHTML = '<div class="evbox"><div class="t">GEOMETRY AT THIS SITE</div>' +
+    'Sits on <b>' + pl.label + '</b>, a ' +
+    (pl.cls === 'wall' ? 'near-vertical wall ' : pl.cls === 'slab' ? 'near-level slab ' : 'inclined slab ') +
+    (pl.cls === 'wall'
+      ? 'out of plumb by <b>' + (pl.tilt * 180/Math.PI).toFixed(2) + '°</b>, drift ratio ' +
+        '<b style="color:' + pl.band.css + '">' + (pl.drift * 100).toFixed(2) + '%</b> (' + pl.band.name + ').'
+      : 'at <b>' + (pl.tilt * 180/Math.PI).toFixed(1) + '°</b> from horizontal.') +
+    ' Area <b>' + fmtNum(mArea(pl.area)) + ' m²</b>, rms residual <b>' + fmtNum(mLen(pl.rms), 3) + ' m</b>.' +
+    '<br><span class="dim">Measured evidence for the operator. It does not set any slider.</span></div>';
+}
+
+function segSync(root, val, amber){
+  var bs = root.querySelectorAll('button');
+  for (var i=0;i<bs.length;i++){
+    var on = bs[i].getAttribute('data-v') === val;
+    bs[i].classList.toggle('on', on);
+    bs[i].classList.toggle('amber', on && amber);
+  }
+}
+
+function edit(fn){
+  var s = getSite(selected);
+  if (!s) return;
+  fn(s);
+  renderQueue();
+  syncAssess();
+}
+
+F.name.addEventListener('input', function(){ edit(function(s){ s.name = F.name.value || ('Site #' + s.id); }); });
+F.n  .addEventListener('input', function(){ edit(function(s){ s.n   = parseInt(F.n.value, 10); }); });
+F.q  .addEventListener('input', function(){ edit(function(s){ s.q   = parseFloat(F.q.value); }); });
+F.r  .addEventListener('input', function(){ edit(function(s){ s.r   = parseFloat(F.r.value); }); });
+F.tau.addEventListener('input', function(){ edit(function(s){ s.tau = parseFloat(F.tau.value); }); });
+
+F.type.addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (!b) return;
+  edit(function(s){ s.type = b.getAttribute('data-v'); });
+});
+F.conf.addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (!b) return;
+  edit(function(s){ s.conf = b.getAttribute('data-v'); });
+});
+$('#btn-fly').addEventListener('click', function(){ var s = getSite(selected); if (s) flyTo(s); });
+$('#btn-del').addEventListener('click', function(){ if (selected != null) deleteSite(selected); });
+
+/* ---------- tabs ---------- */
+function showTab(name){
+  var tb = document.querySelectorAll('#tabs button');
+  for (var i=0;i<tb.length;i++) tb[i].classList.toggle('on', tb[i].getAttribute('data-tab') === name);
+  var ps = document.querySelectorAll('.pane');
+  for (var j=0;j<ps.length;j++) ps[j].classList.toggle('on', ps[j].id === 'pane-' + name);
+}
+document.querySelector('#tabs').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (!b) return;
+  showTab(b.getAttribute('data-tab'));
+});
+
+/* =====================================================================
+   7. .PLY LOADING
+   ===================================================================== */
+var MAX_POINTS = 900000;
+var C0 = 0.28209479177387814;          // 0.5 * sqrt(1/pi) — SH band-0 constant
+var OPACITY_MIN = 0.12;                // post-sigmoid floater cull
+
+var TYPE_SIZE = {
+  char:1, uchar:1, int8:1, uint8:1,
+  short:2, ushort:2, int16:2, uint16:2,
+  int:4, uint:4, int32:4, uint32:4, float:4, float32:4,
+  double:8, float64:8
+};
+var IS_BYTE = { char:1, uchar:1, int8:1, uint8:1 };
+
+/* Sigma = R S S^T R^T for one Gaussian, stored as the upper triangle [00,01,02,11,12,22].
+   scale_* is log-scale and rot_* is a (w,x,y,z) quaternion — the INRIA 3DGS convention that
+   Scaniverse and Polycam both follow. If an exporter ever disagrees, the epsilon clamp in the
+   extractor bounds the damage rather than letting a wrong tolerance run away. */
+function writeCovariance(out, idx, s0, s1, s2, qw, qx, qy, qz){
+  var l0 = Math.exp(2 * s0), l1 = Math.exp(2 * s1), l2 = Math.exp(2 * s2);
+  if (!isFinite(l0)) l0 = 0; if (!isFinite(l1)) l1 = 0; if (!isFinite(l2)) l2 = 0;
+  var nq = Math.sqrt(qw*qw + qx*qx + qy*qy + qz*qz);
+  if (!(nq > 1e-12)) { qw = 1; qx = qy = qz = 0; nq = 1; }
+  qw /= nq; qx /= nq; qy /= nq; qz /= nq;
+  var R00 = 1 - 2*(qy*qy + qz*qz), R01 = 2*(qx*qy - qw*qz),     R02 = 2*(qx*qz + qw*qy);
+  var R10 = 2*(qx*qy + qw*qz),     R11 = 1 - 2*(qx*qx + qz*qz), R12 = 2*(qy*qz - qw*qx);
+  var R20 = 2*(qx*qz - qw*qy),     R21 = 2*(qy*qz + qw*qx),     R22 = 1 - 2*(qx*qx + qy*qy);
+  var o = idx * 6;
+  out[o    ] = l0*R00*R00 + l1*R01*R01 + l2*R02*R02;
+  out[o + 1] = l0*R00*R10 + l1*R01*R11 + l2*R02*R12;
+  out[o + 2] = l0*R00*R20 + l1*R01*R21 + l2*R02*R22;
+  out[o + 3] = l0*R10*R10 + l1*R11*R11 + l2*R12*R12;
+  out[o + 4] = l0*R10*R20 + l1*R11*R21 + l2*R12*R22;
+  out[o + 5] = l0*R20*R20 + l1*R21*R21 + l2*R22*R22;
+}
+
+/* byte-by-byte scan for the literal "end_header" + newline; no fixed header length assumed */
+function findHeaderEnd(bytes){
+  var needle = [101,110,100,95,104,101,97,100,101,114];   // "end_header"
+  var lim = Math.min(bytes.length, 4194304);              // headers are small; cap the scan at 4 MB
+  for (var i = 0; i + needle.length < lim; i++){
+    if (bytes[i] !== needle[0]) continue;
+    var ok = true;
+    for (var j = 1; j < needle.length; j++){ if (bytes[i+j] !== needle[j]){ ok = false; break; } }
+    if (!ok) continue;
+    var k = i + needle.length;
+    if (bytes[k] === 13) k++;                              // tolerate CRLF
+    if (bytes[k] === 10) return { textEnd: k + 1, dataStart: k + 1 };
+  }
+  return null;
+}
+
+function parsePLY(buffer){
+  var bytes = new Uint8Array(buffer);
+  var he = findHeaderEnd(bytes);
+  if (!he) throw new Error('no "end_header" found — this file is not a .ply, or it is truncated');
+
+  var headerText = new TextDecoder('ascii').decode(bytes.subarray(0, he.textEnd));
+  var lines = headerText.split(/\r?\n/);
+  if (!/^ply\s*$/i.test((lines[0] || '').trim())) throw new Error('missing the "ply" magic line at the top of the file');
+
+  var format = null, count = 0, props = [], stride = 0, inVertex = false, sawVertex = false;
+  for (var i = 1; i < lines.length; i++){
+    var t = lines[i].trim();
+    if (!t) continue;
+    var p = t.split(/\s+/);
+    if (p[0] === 'format') {
+      format = (p[1] || '').toLowerCase();
+    } else if (p[0] === 'element') {
+      inVertex = (p[1] === 'vertex');
+      if (inVertex){ count = parseInt(p[2], 10) || 0; sawVertex = true; }
+    } else if (p[0] === 'property' && inVertex) {
+      if (p[1] === 'list') continue;                       // skip property list
+      var ty = (p[1] || '').toLowerCase(), nm = p[2];
+      var sz = TYPE_SIZE[ty];
+      if (!sz) throw new Error('unsupported property type "' + p[1] + '" in the vertex element');
+      props.push({ name: nm, type: ty, size: sz, offset: stride, order: props.length });
+      stride += sz;
+    }
+  }
+
+  if (!format) throw new Error('header has no "format" line');
+  if (format !== 'binary_little_endian' && format !== 'binary_big_endian' && format !== 'ascii')
+    throw new Error('unrecognised ply format "' + format + '"');
+  if (!sawVertex) throw new Error('no "element vertex" in the header — this looks like a mesh-only or empty .ply');
+  if (!count) throw new Error('the header declares 0 vertices');
+
+  var map = {};
+  for (var m = 0; m < props.length; m++) map[props[m].name] = props[m];
+  if (!map.x || !map.y || !map.z)
+    throw new Error('vertex element has no x/y/z properties — this .ply carries no point coordinates');
+
+  var le = (format !== 'binary_big_endian');
+  var ascii = (format === 'ascii');
+
+  var hasDC  = !!(map.f_dc_0 && map.f_dc_1 && map.f_dc_2);
+  var rgbSet = (map.red && map.green && map.blue) ? ['red','green','blue']
+             : (map.r && map.g && map.b)          ? ['r','g','b'] : null;
+  var hasOp  = !!map.opacity;
+  var rgbScale = rgbSet && IS_BYTE[map[rgbSet[0]].type] ? (1/255) : 1;
+
+  // scale_* / rot_* give each Gaussian its covariance, which the geometry pass needs to set a
+  // per-point plane tolerance. Absent (plain point cloud) the extractor falls back to a global epsilon.
+  var hasCov = !!(map.scale_0 && map.scale_1 && map.scale_2 &&
+                  map.rot_0 && map.rot_1 && map.rot_2 && map.rot_3);
+
+  var step = Math.max(1, Math.ceil(count / MAX_POINTS));   // stride sampling keeps spatial coverage uniform
+  var cap = Math.ceil(count / step);
+  var positions = new Float32Array(cap * 3);
+  var colors = new Float32Array(cap * 3);
+  var alphas = new Float32Array(cap);                      // post-sigmoid opacity, the RANSAC weight
+  var cov = hasCov ? new Float32Array(cap * 6) : null;     // upper triangle of Sigma, local frame
+  var w = 0;
+
+  function emit(x, y, z, cr, cg, cb, al){
+    var o = w * 3;
+    positions[o] = x; positions[o+1] = y; positions[o+2] = z;
+    colors[o] = cr; colors[o+1] = cg; colors[o+2] = cb;
+    alphas[w] = al;
+    w++;
+  }
+
+  var culled = 0;
+
+  if (!ascii) {
+    var dv = new DataView(buffer);
+    function reader(name){
+      var pr = map[name]; if (!pr) return null;
+      var off = pr.offset;
+      switch (pr.type){
+        case 'float': case 'float32':  return function(b){ return dv.getFloat32(b + off, le); };
+        case 'double': case 'float64': return function(b){ return dv.getFloat64(b + off, le); };
+        case 'uchar': case 'uint8':    return function(b){ return dv.getUint8(b + off); };
+        case 'char': case 'int8':      return function(b){ return dv.getInt8(b + off); };
+        case 'ushort': case 'uint16':  return function(b){ return dv.getUint16(b + off, le); };
+        case 'short': case 'int16':    return function(b){ return dv.getInt16(b + off, le); };
+        case 'uint': case 'uint32':    return function(b){ return dv.getUint32(b + off, le); };
+        case 'int': case 'int32':      return function(b){ return dv.getInt32(b + off, le); };
+      }
+      return null;
+    }
+    var rx = reader('x'), ry = reader('y'), rz = reader('z');
+    var d0 = hasDC ? reader('f_dc_0') : null, d1 = hasDC ? reader('f_dc_1') : null, d2 = hasDC ? reader('f_dc_2') : null;
+    var c0 = rgbSet ? reader(rgbSet[0]) : null, c1 = rgbSet ? reader(rgbSet[1]) : null, c2 = rgbSet ? reader(rgbSet[2]) : null;
+    var ro = hasOp ? reader('opacity') : null;
+    var s0r = hasCov ? reader('scale_0') : null, s1r = hasCov ? reader('scale_1') : null, s2r = hasCov ? reader('scale_2') : null;
+    var q0r = hasCov ? reader('rot_0') : null, q1r = hasCov ? reader('rot_1') : null,
+        q2r = hasCov ? reader('rot_2') : null, q3r = hasCov ? reader('rot_3') : null;
+    var base0 = he.dataStart;
+
+    for (var v = 0; v < count; v += step){
+      var base = base0 + v * stride;
+      if (base + stride > buffer.byteLength) break;         // bounds check inside the read loop
+      var al = 1;
+      if (hasOp){
+        al = 1 / (1 + Math.exp(-ro(base)));                 // opacity is stored pre-sigmoid
+        if (al < OPACITY_MIN){ culled++; continue; }        // floater filter
+      }
+      var cr = 0.6, cg = 0.6, cb = 0.6;                     // fall back to flat grey when no colour exists
+      if (hasDC){
+        cr = clamp01(0.5 + C0 * d0(base));
+        cg = clamp01(0.5 + C0 * d1(base));
+        cb = clamp01(0.5 + C0 * d2(base));
+      } else if (rgbSet){
+        cr = clamp01(c0(base) * rgbScale);
+        cg = clamp01(c1(base) * rgbScale);
+        cb = clamp01(c2(base) * rgbScale);
+      }
+      if (hasCov) writeCovariance(cov, w, s0r(base), s1r(base), s2r(base),
+                                  q0r(base), q1r(base), q2r(base), q3r(base));
+      emit(rx(base), ry(base), rz(base), cr, cg, cb, al);
+    }
+  } else {
+    // ASCII bodies are rare for splat exports; parsed the simple way.
+    var body = new TextDecoder('utf-8').decode(bytes.subarray(he.dataStart));
+    var rows = body.split('\n');
+    var ix = map.x.order, iy = map.y.order, iz = map.z.order;
+    var seen = 0;
+    for (var li = 0; li < rows.length && seen < count; li++){
+      var line = rows[li].trim();
+      if (!line) continue;
+      var idx = seen++;
+      if (idx % step !== 0) continue;
+      var tk = line.split(/\s+/);
+      if (tk.length < props.length) continue;
+      var aal = 1;
+      if (hasOp){
+        aal = 1 / (1 + Math.exp(-parseFloat(tk[map.opacity.order])));
+        if (aal < OPACITY_MIN){ culled++; continue; }
+      }
+      var ar = 0.6, ag = 0.6, ab = 0.6;
+      if (hasDC){
+        ar = clamp01(0.5 + C0 * parseFloat(tk[map.f_dc_0.order]));
+        ag = clamp01(0.5 + C0 * parseFloat(tk[map.f_dc_1.order]));
+        ab = clamp01(0.5 + C0 * parseFloat(tk[map.f_dc_2.order]));
+      } else if (rgbSet){
+        ar = clamp01(parseFloat(tk[map[rgbSet[0]].order]) * rgbScale);
+        ag = clamp01(parseFloat(tk[map[rgbSet[1]].order]) * rgbScale);
+        ab = clamp01(parseFloat(tk[map[rgbSet[2]].order]) * rgbScale);
+      }
+      if (hasCov) writeCovariance(cov, w,
+        parseFloat(tk[map.scale_0.order]), parseFloat(tk[map.scale_1.order]), parseFloat(tk[map.scale_2.order]),
+        parseFloat(tk[map.rot_0.order]), parseFloat(tk[map.rot_1.order]),
+        parseFloat(tk[map.rot_2.order]), parseFloat(tk[map.rot_3.order]));
+      emit(parseFloat(tk[ix]), parseFloat(tk[iy]), parseFloat(tk[iz]), ar, ag, ab, aal);
+    }
+  }
+
+  if (w === 0)
+    throw new Error('every point was rejected — all ' + fmtInt(count) +
+                    ' gaussians fell below the opacity floor, or the vertex data is unreadable');
+
+  return {
+    positions: positions.subarray(0, w * 3),
+    colors: colors.subarray(0, w * 3),
+    alphas: alphas.subarray(0, w),
+    cov: cov ? cov.subarray(0, w * 6) : null,
+    total: count, kept: w, step: step, culled: culled,
+    colorSource: hasDC ? 'SH dc' : (rgbSet ? 'rgb' : 'flat grey'),
+    format: format
+  };
+}
+
+/* =====================================================================
+   7b. UP-AXIS ORIENTATION
+   Splat .ply exports land Y-down, but point-cloud exports (Scaniverse, most
+   LiDAR/photogrammetry tools) are Z-up. Assuming either one puts the scan on its
+   side and makes every verticality number meaningless, so detect it instead.
+   ===================================================================== */
+var ORIENTS = [
+  { name: 'Y-UP',   rx: 0 },              // already three.js convention
+  { name: 'Y-DOWN', rx: Math.PI },        // (x,y,z) -> (x,-y,-z)   splat .ply
+  { name: 'Z-UP',   rx: -Math.PI / 2 },   // (x,y,z) -> (x,z,-y)    point-cloud .ply
+  { name: 'Z-DOWN', rx:  Math.PI / 2 }    // (x,y,z) -> (x,-z,y)
+];
+
+/* Gravity's signature is a dense layer at the BOTTOM, not merely the densest layer anywhere:
+   in a scan dominated by a wall the densest layer is that wall, and scoring on density alone
+   picks the wall's normal as "up". So for each candidate up direction, ask how much material
+   sits in a thin band just above its lowest extreme — the floor — and take the clear winner. */
+function detectOrientation(pos){
+  var N = pos.length / 3, BINS = 512;
+  var step = Math.max(1, Math.floor(N / 60000));
+  var mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity], i, a, v;
+  for (i = 0; i < N; i += step) for (a = 0; a < 3; a++){
+    v = pos[i*3 + a]; if (v < mn[a]) mn[a] = v; if (v > mx[a]) mx[a] = v;
+  }
+  var hist = [new Int32Array(BINS), new Int32Array(BINS), new Int32Array(BINS)], tot = 0;
+  for (i = 0; i < N; i += step){
+    for (a = 0; a < 3; a++){
+      var span = mx[a] - mn[a];
+      if (!(span > 0)) continue;
+      var b = Math.floor((pos[i*3 + a] - mn[a]) / span * BINS);
+      hist[a][b < 0 ? 0 : (b >= BINS ? BINS - 1 : b)]++;
+    }
+    tot++;
+  }
+  if (!tot) return { index: 2, confident: false, score: 0, runnerUp: 0, name: 'Z-UP' };
+
+  var bandBins = Math.max(1, Math.round(BINS * 0.03));   // floor band = 3% of the span
+  var skip = tot * 0.02;                                  // ignore the lowest 2% as stragglers
+  // walking the histogram from one end gives that sign; from the other end gives its opposite
+  function floorMass(axis, fromLow){
+    var h = hist[axis], acc = 0, b, k, startBin = -1;
+    for (k = 0; k < BINS; k++){
+      b = fromLow ? k : BINS - 1 - k;
+      acc += h[b];
+      if (acc >= skip){ startBin = k; break; }
+    }
+    if (startBin < 0) return 0;
+    var mass = 0;
+    for (k = startBin; k < Math.min(BINS, startBin + bandBins); k++) mass += h[fromLow ? k : BINS - 1 - k];
+    return mass / tot;
+  }
+
+  // index into ORIENTS for each candidate "up" direction
+  var cands = [
+    { axis: 1, low: true,  idx: 0, name: 'Y-UP'   },     // floor at min Y
+    { axis: 1, low: false, idx: 1, name: 'Y-DOWN' },     // floor at max Y
+    { axis: 2, low: true,  idx: 2, name: 'Z-UP'   },
+    { axis: 2, low: false, idx: 3, name: 'Z-DOWN' },
+    { axis: 0, low: true,  idx: -1, name: 'X-UP'  },     // not a real export convention: only
+    { axis: 0, low: false, idx: -1, name: 'X-DOWN' }     // ever a sign that detection failed
+  ];
+  var best = null, second = 0;
+  for (i = 0; i < cands.length; i++){
+    cands[i].score = floorMass(cands[i].axis, cands[i].low);
+    if (!best || cands[i].score > best.score){ if (best) second = best.score; best = cands[i]; }
+    else if (cands[i].score > second) second = cands[i].score;
+  }
+  var confident = best.idx >= 0 && best.score > 0.10 && best.score > second * 1.5;
+  return {
+    index: best.idx >= 0 ? best.idx : 2,                  // fall back to Z-UP, the point-cloud norm
+    confident: confident, score: best.score, runnerUp: second,
+    name: best.idx >= 0 ? best.name : (best.name + ' — no usable floor')
+  };
+}
+
+/* =====================================================================
+   8. SCAN SLOTS (A / B) — visual toggle only, no alignment maths
+   ===================================================================== */
+var slots = { A: null, B: null };
+var activeSlot = 'A';
+
+function slotBtn(k){ return $('#slot-' + k); }
+
+function setActiveSlot(k){
+  activeSlot = k;
+  for (var key in slots){
+    if (slots[key]) slots[key].obj.visible = (key === activeSlot);
+    slotBtn(key).classList.toggle('on', key === activeSlot);
+  }
+  var s = slots[activeSlot];
+  refreshOverlay();
+  renderGeo();
+  setStatus(s ? ('slot ' + activeSlot + ': ' + s.name + ' — ' + fmtInt(s.kept) + ' pts')
+             : ('slot ' + activeSlot + ' is empty — load a .ply into it'));
+}
+
+function targetSlot(){
+  // The boot-time synthetic field is provisional: the first real load replaces it, so a user's
+  // first .ply always lands in A rather than being pushed into B by the safety net.
+  if (slots.A && slots.A.auto) return 'A';
+  if (!slots.A) return 'A';
+  if (!slots.B) return 'B';
+  return activeSlot;                 // both full: replace whichever slot is showing
+}
+
+function installCloud(res, name, orient, auto){
+  var key = targetSlot();
+  if (slots[key]){                                   // dispose the outgoing cloud
+    scene.remove(slots[key].obj);
+    slots[key].obj.geometry.dispose();
+    slots[key].obj.material.dispose();
+  }
+
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(res.positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(res.colors, 3));
+  geo.computeBoundingSphere();
+  var sph = geo.boundingSphere;
+  var rad = (sph && isFinite(sph.radius) && sph.radius > 0) ? sph.radius : 10;
+
+  var mat = new THREE.PointsMaterial({
+    size: Math.max(0.004, rad * 0.0035),
+    vertexColors: true,
+    sizeAttenuation: true
+  });
+  var pts = new THREE.Points(geo, mat);
+  var det = null;
+  if (orient == null){ det = detectOrientation(res.positions); orient = det.index; }
+  pts.rotation.x = ORIENTS[orient].rx;
+  scene.add(pts);
+
+  slots[key] = { obj: pts, name: name, kept: res.kept, total: res.total, orient: orient, auto: !!auto,
+                 detected: det, alphas: res.alphas || null, cov: res.cov || null, radius: rad,
+                 truth: res.truth || null, geom: null };
+  activeSlot = key;
+  setActiveSlot(key);
+  frameSlot(key);
+
+  setStatus(name + ' → slot ' + key + ' · ' + fmtInt(res.kept) + ' / ' + fmtInt(res.total) +
+            ' pts · 1:' + res.step + ' sampling · ' + fmtInt(res.culled) + ' culled · colour ' + res.colorSource +
+            (det ? ' · up-axis ' + ORIENTS[orient].name +
+                   (det.confident ? ' (detected, floor holds ' + Math.round(det.score*100) + '% of points)'
+                                  : ' (UNCERTAIN — press f if this looks wrong)') : ''));
+}
+
+function frameSlot(key){
+  var s = slots[key]; if (!s) return;
+  var sph = s.obj.geometry.boundingSphere;
+  if (!sph) return;
+  var c = sph.center.clone();
+  // rotation.x = PI negates y (and z) — applying the world matrix does that compensation for us.
+  s.obj.updateMatrixWorld();
+  c.applyMatrix4(s.obj.matrixWorld);
+  var rad = (isFinite(sph.radius) && sph.radius > 0) ? sph.radius : 10;
+
+  orbit.target.copy(c);
+  orbit.radius = clamp(rad * 2.2, 0.3, 600);
+  orbit.theta = 0.7; orbit.phi = 1.15;
+  flyGoal = null;
+  HOME.target.copy(c); HOME.radius = orbit.radius; HOME.theta = 0.7; HOME.phi = 1.15;
+
+  camera.near = Math.max(0.01, rad / 2000);
+  camera.far = Math.max(100, rad * 60);
+  camera.updateProjectionMatrix();
+}
+
+/* ---------- load progress overlay ----------
+   A Scaniverse splat export is routinely hundreds of MB. The parse loop itself is
+   bounded by MAX_POINTS, so the cost that actually stalls the tab is reading the file
+   and holding it in memory \u2014 which is what gets a progress bar and a guard here. */
+var loadBox = $('#loadbox'), loadBarEl = $('#load-bar'), loadTitleEl = $('#load-title'),
+    loadFileEl = $('#load-file'), loadMsgEl = $('#load-msg');
+var loadBusy = false;
+
+var SNIFF_BYTES = 262144;            // headers are far smaller; this is deliberately generous
+var BIG_FILE = 700 * 1048576;        // past this a tab is at real risk of an out-of-memory kill
+
+function loadShow(title, fileLabel){
+  loadTitleEl.textContent = title;
+  loadFileEl.textContent = fileLabel;
+  loadMsgEl.textContent = '';
+  loadBarEl.style.width = '0%';
+  loadBox.classList.add('on');
+}
+function loadSet(frac, msg){
+  if (frac != null) loadBarEl.style.width = (clamp01(frac) * 100).toFixed(1) + '%';
+  if (msg != null) loadMsgEl.textContent = msg;
+}
+function loadHide(){ loadBox.classList.remove('on'); }
+
+/* Run fn only once the browser has actually painted, so a long synchronous parse never
+   hides behind a progress bar that was never drawn. */
+function afterPaint(fn){
+  requestAnimationFrame(function(){
+    requestAnimationFrame(function(){ setTimeout(fn, 0); });
+  });
+}
+
+/* Read just enough of the front of the file to say what it is before committing to the whole thing. */
+function sniffPLY(buf){
+  var bytes = new Uint8Array(buf);
+  var he = findHeaderEnd(bytes);
+  if (!he) return null;
+  var text = new TextDecoder('ascii').decode(bytes.subarray(0, he.textEnd));
+  var mc = text.match(/element\s+vertex\s+(\d+)/i);
+  var mf = text.match(/format\s+(\S+)/i);
+  return {
+    count: mc ? (parseInt(mc[1], 10) || 0) : 0,
+    format: mf ? mf[1].toLowerCase() : null,
+    splat: /property\s+\S+\s+scale_0/i.test(text) && /property\s+\S+\s+rot_0/i.test(text),
+    dc: /property\s+\S+\s+f_dc_0/i.test(text)
+  };
+}
+
+function readSlice(blob, done, fail){
+  var fr = new FileReader();
+  fr.onerror = function(){ fail(new Error('the browser refused to read this file')); };
+  fr.onload = function(e){ done(e.target.result); };
+  fr.readAsArrayBuffer(blob);
+}
+
+/* Stream into one pre-allocated buffer. Pre-allocating matters: collecting chunks and then
+   joining them holds two full copies at once, which on a 500 MB scan is the difference
+   between a load and a dead tab. */
+function readAll(file, onProg, done, fail){
+  if (typeof file.stream !== 'function' || !window.ReadableStream){
+    var fr = new FileReader();
+    fr.onerror = function(){ fail(new Error('the browser refused to read this file')); };
+    fr.onprogress = function(e){ if (e.lengthComputable) onProg(e.loaded / e.total); };
+    fr.onload = function(e){ done(e.target.result); };
+    fr.readAsArrayBuffer(file);
+    return;
+  }
+  var out;
+  try { out = new Uint8Array(file.size); }
+  catch (err){ fail(new Error('could not reserve ' + fmtBytes(file.size) + ' of memory for this scan')); return; }
+
+  var reader = file.stream().getReader(), got = 0;
+  (function pump(){
+    reader.read().then(function(res){
+      if (res.done){ done(out.buffer); return; }
+      var chunk = res.value;
+      if (got + chunk.length > out.length){ fail(new Error('the file changed size while it was being read')); return; }
+      out.set(chunk, got);
+      got += chunk.length;
+      onProg(got / file.size);
+      pump();
+    }, function(err){ fail(err); });
+  })();
+}
+
+function loadPLYFile(file){
+  if (loadBusy){ setStatus('already loading a scan \u2014 let it finish first'); return; }
+  loadBusy = true;
+
+  function fail(msg, err){
+    if (err) console.error(err);
+    loadBusy = false;
+    loadHide();
+    setStatus('load failed: ' + msg);
+    alert('Could not load "' + file.name + '".\n\n' + msg +
+          '\n\nRubble reads point/splat .ply files (Scaniverse, Polycam, gaussian-splat exports). ' +
+          'A mesh-only .ply with no vertex coordinates, or a file that is not a .ply at all, will fail here.');
+  }
+
+  loadShow('READING', file.name + ' \u00b7 ' + fmtBytes(file.size));
+  loadSet(0, 'opening \u2026');
+  setStatus('reading ' + file.name + ' (' + fmtBytes(file.size) + ') \u2026');
+
+  readSlice(file.slice(0, SNIFF_BYTES), function(head){
+    var info = null;
+    try { info = sniffPLY(head); } catch (err){ info = null; }
+    if (!info){
+      fail('no "end_header" in the first ' + fmtBytes(SNIFF_BYTES) +
+           ' \u2014 this is not a .ply, or it is truncated');
+      return;
+    }
+
+    var kind = info.splat ? 'gaussian splat, covariance present'
+             : (info.dc ? 'splat, no covariance' : 'point cloud');
+    var step = info.count ? Math.max(1, Math.ceil(info.count / MAX_POINTS)) : 1;
+    var desc = fmtInt(info.count) + ' vertices \u00b7 ' + kind +
+               (step > 1 ? ' \u00b7 sampling 1:' + step : ' \u00b7 no sampling needed');
+    loadSet(0, desc);
+
+    if (file.size > BIG_FILE &&
+        !confirm('"' + file.name + '" is ' + fmtBytes(file.size) + ' (' + fmtInt(info.count) + ' vertices).\n\n' +
+                 'A scan this large can exhaust the tab and kill the page. Rubble samples it down to ' +
+                 fmtInt(MAX_POINTS) + ' points, but the whole file has to be read in first.\n\nLoad it anyway?')){
+      loadBusy = false;
+      loadHide();
+      setStatus('cancelled \u2014 ' + file.name + ' was not loaded');
+      return;
+    }
+
+    readAll(file, function(frac){
+      loadSet(frac * 0.9, desc + '  \u00b7  ' + Math.round(frac * 100) + '%');
+    }, function(buf){
+      loadTitleEl.textContent = 'PARSING';
+      loadSet(0.93, 'parsing ' + fmtInt(info.count) + ' vertices \u2026');
+      setStatus('parsing ' + file.name + ' \u2026');
+      afterPaint(function(){
+        var res;
+        try { res = parsePLY(buf); }
+        catch (err){ fail(err.message, err); return; }
+        loadTitleEl.textContent = 'BUILDING';
+        loadSet(1, 'building the point cloud \u2026');
+        afterPaint(function(){
+          try { installCloud(res, file.name, null); }
+          catch (err){ fail(err.message, err); return; }
+          loadBusy = false;
+          loadHide();
+          renderSwarm();
+        });
+      });
+    }, function(err){ fail((err && err.message) || 'the read failed', err); });
+  }, function(err){ fail((err && err.message) || 'the browser refused to open this file', err); });
+}
+
+$('#btn-load').addEventListener('click', function(){ $('#file').click(); });
+$('#file').addEventListener('change', function(e){
+  var f = e.target.files && e.target.files[0];
+  if (f) loadPLYFile(f);
+  e.target.value = '';                                  // allow re-loading the same file
+});
+slotBtn('A').addEventListener('click', function(){ setActiveSlot('A'); });
+slotBtn('B').addEventListener('click', function(){ setActiveSlot('B'); });
+
+/* drag & drop a .ply onto the view */
+view.addEventListener('dragover', function(e){ e.preventDefault(); });
+view.addEventListener('drop', function(e){
+  e.preventDefault();
+  var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadPLYFile(f);
+});
+
+/* =====================================================================
+   9. SYNTHETIC FALLBACK SCENE — the on-stage safety net
+   ===================================================================== */
+function makeSynthetic(){
+  var SLAB_N = 14000, WALL_N = 12000, DEBRIS_N = 32000;
+  var TOTAL = SLAB_N * 6 + WALL_N * 2 + DEBRIS_N;         // ~140k
+  var positions = new Float32Array(TOTAL * 3);
+  var colors = new Float32Array(TOTAL * 3);
+  var w = 0;
+
+  function put(x, y, z, r, g, b){
+    var o = w * 3;
+    positions[o] = x; positions[o+1] = y; positions[o+2] = z;
+    colors[o] = r; colors[o+1] = g; colors[o+2] = b;
+    w++;
+  }
+  function tint(base, jit){
+    var k = 0.72 + Math.random() * 0.5;
+    return [clamp01(base[0] * k + jit * (Math.random()-0.5)),
+            clamp01(base[1] * k + jit * (Math.random()-0.5)),
+            clamp01(base[2] * k + jit * (Math.random()-0.5))];
+  }
+
+  var v = new THREE.Vector3(), e = new THREE.Euler();
+  var CONCRETE = [0.46, 0.44, 0.41], DUST = [0.50, 0.45, 0.37], WALLC = [0.40, 0.37, 0.34];
+
+  // six overlapping thin slabs at varied rotations and heights — collapsed floor plates
+  var slabs = [
+    { p:[ 0.0, 0.3,  0.0], s:[17, 0.30, 13], r:[ 0.05,  0.10, -0.03] },
+    { p:[ 1.4, 1.5, -1.0], s:[14, 0.26, 11], r:[-0.14,  0.55,  0.09] },
+    { p:[-2.2, 2.6,  1.6], s:[12, 0.24, 10], r:[ 0.22, -0.35, -0.12] },
+    { p:[ 2.8, 3.6,  2.2], s:[10, 0.22,  9], r:[-0.30,  0.95,  0.20] },
+    { p:[-1.0, 4.6, -2.4], s:[ 9, 0.20,  8], r:[ 0.38,  0.20, -0.26] },
+    { p:[ 0.6, 5.6,  0.8], s:[ 7, 0.18,  6], r:[-0.10, -0.80,  0.34] }
+  ];
+  for (var si = 0; si < slabs.length; si++){
+    var S = slabs[si];
+    e.set(S.r[0], S.r[1], S.r[2]);
+    for (var i = 0; i < SLAB_N; i++){
+      v.set((Math.random()-0.5) * S.s[0], (Math.random()-0.5) * S.s[1], (Math.random()-0.5) * S.s[2]);
+      v.applyEuler(e);
+      var c = tint(CONCRETE, 0.06);
+      put(v.x + S.p[0], v.y + S.p[1], v.z + S.p[2], c[0], c[1], c[2]);
+    }
+  }
+
+  // two box-ish volumes — partial walls still standing
+  var walls = [
+    { p:[-7.5, 2.8, -4.0], s:[1.0, 5.6, 8.0], r: 0.18 },
+    { p:[ 6.8, 2.2,  4.6], s:[7.0, 4.4, 0.9], r:-0.11 }
+  ];
+  for (var wi = 0; wi < walls.length; wi++){
+    var W = walls[wi];
+    e.set(0, W.r, W.r * 0.5);
+    // Points land on the shell, and each face is sampled in proportion to its area — a scan
+    // samples a big wall face far more densely than a narrow return, and equal-per-face
+    // sampling left the large faces too sparse to measure.
+    var fa = [ W.s[1]*W.s[2], W.s[1]*W.s[2],      // -x, +x
+               W.s[0]*W.s[1], W.s[0]*W.s[1],      // -z, +z
+               W.s[0]*W.s[2] ];                    // broken top
+    var cum = [], tot = 0;
+    for (var fi = 0; fi < 5; fi++){ tot += fa[fi]; cum[fi] = tot; }
+    for (var k = 0; k < WALL_N; k++){
+      var pick = Math.random() * tot, face = 0;
+      while (face < 4 && cum[face] < pick) face++;
+      var lx = (Math.random()-0.5) * W.s[0], ly = (Math.random()-0.5) * W.s[1], lz = (Math.random()-0.5) * W.s[2];
+      if (face === 0)      lx = -0.5 * W.s[0];
+      else if (face === 1) lx =  0.5 * W.s[0];
+      else if (face === 2) lz = -0.5 * W.s[2];
+      else if (face === 3) lz =  0.5 * W.s[2];
+      else                 ly =  0.5 * W.s[1] * (0.8 + Math.random() * 0.2);   // broken top edge
+      v.set(lx, ly, lz).applyEuler(e);
+      var cw = tint(WALLC, 0.05);
+      put(v.x + W.p[0], v.y + W.p[1], v.z + W.p[2], cw[0], cw[1], cw[2]);
+    }
+  }
+
+  // radial scatter of debris across the ground
+  for (var d = 0; d < DEBRIS_N; d++){
+    var rr = Math.pow(Math.random(), 0.6) * 15.5;
+    var a = Math.random() * Math.PI * 2;
+    var yy = Math.abs(Math.random() * Math.random()) * 1.7 - 0.15;
+    var cd = tint(DUST, 0.07);
+    put(Math.cos(a) * rr + (Math.random()-0.5) * 0.6, yy, Math.sin(a) * rr + (Math.random()-0.5) * 0.6,
+        cd[0], cd[1], cd[2]);
+  }
+
+  var unit = new Float32Array(w);
+  unit.fill(1);                                    // no opacity channel: every point weighs the same
+  return {
+    positions: positions.subarray(0, w * 3),
+    colors: colors.subarray(0, w * 3),
+    alphas: unit, cov: null,
+    // the generator's own parameters, so the plane extractor can be checked against known answers
+    truth: { slabs: slabs, walls: walls },
+    total: w, kept: w, step: 1, culled: 0, colorSource: 'procedural', format: 'synthetic'
+  };
+}
+
+$('#btn-syn').addEventListener('click', function(){
+  setStatus('generating synthetic rubble field …');
+  setTimeout(function(){
+    try {
+      installCloud(makeSynthetic(), 'synthetic rubble field', 0);   // generated Y-up, nothing to detect
+    } catch (err){
+      console.error(err);
+      setStatus('synthetic scene failed: ' + err.message);
+      alert('Could not build the synthetic scene: ' + err.message);
+    }
+  }, 30);
+});
+
+/* =====================================================================
+   10. GEOMETRY EXTRACTION  —  splat -> measurable structural facts
+   No mesh. Planes, verticality, and debris volume are what an assessment
+   actually needs; a surface is not.
+   ===================================================================== */
+var UP = new THREE.Vector3(0, 1, 0);      // world up after the Y-down flip; the "z-hat" of the formulas
+
+var GEO = {
+  MAX_PLANES:   16,
+  ITER:        420,     // RANSAC hypotheses per plane
+  SCORE_N:   12000,     // points scored per hypothesis
+  K_SIGMA:     1.0,     // epsilon_i = K * sigma_i, sigma_i^2 = n' Sigma_i n
+  MIN_SUPPORT: 0.006,   // stop once the best plane holds under 0.6% of total opacity weight
+  MIN_INLIERS:   60,
+  CLAIM:       2.5,     // fit tight, claim wide: a surface has thickness, and without this one
+                        // thick slab spawns a stack of parallel duplicates
+  WORK_CAP: 160000,
+  GRID_DIV:     20,     // localized sampling: ~20 cells across the scene
+  BUDGET_MS:    12      // work per tick, so the tab never freezes
+};
+
+/* drift ratio delta = tan(theta). Bands are indicative engineering practice, not code. */
+var DRIFT_BANDS = [
+  { max: 0.005,    name: 'COSMETIC', hex: 0x7d8896, css: '#7d8896' },
+  { max: 0.010,    name: 'MINOR',    hex: 0xffc21f, css: '#ffc21f' },
+  { max: 0.020,    name: 'MODERATE', hex: 0xff8a1f, css: '#ff8a1f' },
+  { max: Infinity, name: 'SEVERE',   hex: 0xff3b30, css: '#ff3b30' }
+];
+function driftBand(d){
+  for (var i = 0; i < DRIFT_BANDS.length; i++) if (d < DRIFT_BANDS[i].max) return DRIFT_BANDS[i];
+  return DRIFT_BANDS[DRIFT_BANDS.length - 1];
+}
+var CLS_HEX = { slab: 0x4a9eff, incline: 0x35d0c0 };
+var CLS_CSS = { slab: '#4a9eff', incline: '#35d0c0' };
+
+/* ---------- 3x3 symmetric eigen-decomposition (cyclic Jacobi) ---------- */
+function jacobi3(m){                       // m = [s00, s01, s02, s11, s12, s22]
+  var a = [[m[0], m[1], m[2]], [m[1], m[3], m[4]], [m[2], m[4], m[5]]];
+  var v = [[1,0,0],[0,1,0],[0,0,1]];
+  for (var sweep = 0; sweep < 12; sweep++){
+    if (Math.abs(a[0][1]) + Math.abs(a[0][2]) + Math.abs(a[1][2]) < 1e-16) break;
+    for (var p = 0; p < 2; p++) for (var q = p + 1; q < 3; q++){
+      if (Math.abs(a[p][q]) < 1e-20) continue;
+      var theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+      var sgn = theta >= 0 ? 1 : -1;
+      var t = sgn / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+      var c = 1 / Math.sqrt(t * t + 1), s = t * c, k;
+      for (k = 0; k < 3; k++){ var akp = a[k][p], akq = a[k][q]; a[k][p] = c*akp - s*akq; a[k][q] = s*akp + c*akq; }
+      for (k = 0; k < 3; k++){ var apk = a[p][k], aqk = a[q][k]; a[p][k] = c*apk - s*aqk; a[q][k] = s*apk + c*aqk; }
+      for (k = 0; k < 3; k++){ var vkp = v[k][p], vkq = v[k][q]; v[k][p] = c*vkp - s*vkq; v[k][q] = s*vkp + c*vkq; }
+    }
+  }
+  return { vals: [a[0][0], a[1][1], a[2][2]], vecs: v };   // vecs[row][j] = component row of eigenvector j
+}
+
+/* ---------- world-space working set (positions, weights, covariances) ---------- */
+function buildWorkingSet(slot){
+  var arr = slot.obj.geometry.attributes.position.array;
+  var N = arr.length / 3;
+  var step = Math.max(1, Math.ceil(N / GEO.WORK_CAP));
+  var cap = Math.ceil(N / step);
+  var P = new Float32Array(cap * 3), A = new Float32Array(cap);
+  var C = slot.cov ? new Float32Array(cap * 6) : null;
+
+  slot.obj.updateMatrixWorld();
+  var e = slot.obj.matrixWorld.elements;
+  var m00=e[0], m01=e[4], m02=e[8], m10=e[1], m11=e[5], m12=e[9], m20=e[2], m21=e[6], m22=e[10];
+  var tx=e[12], ty=e[13], tz=e[14];
+
+  var k = 0;
+  for (var i = 0; i < N && k < cap; i += step){
+    var o = i * 3, x = arr[o], y = arr[o+1], z = arr[o+2], q = k * 3;
+    P[q]   = m00*x + m01*y + m02*z + tx;
+    P[q+1] = m10*x + m11*y + m12*z + ty;
+    P[q+2] = m20*x + m21*y + m22*z + tz;
+    A[k]   = slot.alphas ? slot.alphas[i] : 1;
+    if (C){                                   // Sigma_world = M Sigma M'
+      var c = i*6, s00=slot.cov[c], s01=slot.cov[c+1], s02=slot.cov[c+2],
+                   s11=slot.cov[c+3], s12=slot.cov[c+4], s22=slot.cov[c+5];
+      var t00=m00*s00+m01*s01+m02*s02, t01=m00*s01+m01*s11+m02*s12, t02=m00*s02+m01*s12+m02*s22;
+      var t10=m10*s00+m11*s01+m12*s02, t11=m10*s01+m11*s11+m12*s12, t12=m10*s02+m11*s12+m12*s22;
+      var t20=m20*s00+m21*s01+m22*s02, t21=m20*s01+m21*s11+m22*s12, t22=m20*s02+m21*s12+m22*s22;
+      var d = k*6;
+      C[d]   = t00*m00 + t01*m01 + t02*m02;
+      C[d+1] = t00*m10 + t01*m11 + t02*m12;
+      C[d+2] = t00*m20 + t01*m21 + t02*m22;
+      C[d+3] = t10*m10 + t11*m11 + t12*m12;
+      C[d+4] = t10*m20 + t11*m21 + t12*m22;
+      C[d+5] = t20*m20 + t21*m21 + t22*m22;
+    }
+    k++;
+  }
+  return { P: P, A: A, C: C, n: k, step: step };
+}
+
+/* ---------- in-plane basis: horizontal u, up-ish v for walls ---------- */
+function planeBasis(nx, ny, nz){
+  var ux, uy, uz;
+  if (Math.abs(ny) < 0.9){
+    ux = nz; uy = 0; uz = -nx;                 // n x up, so u is horizontal and v comes out vertical
+  } else {                                     // near-horizontal plane: any in-plane direction will do
+    ux = 1 - nx*nx; uy = -nx*ny; uz = -nx*nz;  // x-axis orthogonalised against n
+  }
+  var L = Math.sqrt(ux*ux + uy*uy + uz*uz);
+  if (!(L > 1e-9)){ ux = 1; uy = 0; uz = 0; L = 1; }
+  ux /= L; uy /= L; uz /= L;
+  var vx = ny*uz - nz*uy, vy = nz*ux - nx*uz, vz = nx*uy - ny*ux;
+  return [ux, uy, uz, vx, vy, vz];
+}
+
+/* ---------- the extractor: chunked so the UI keeps painting ---------- */
+function extractGeometry(slot, onProgress, onDone, onFail){
+  // Seeded RNG (mulberry32): RANSAC is randomised, and an operator re-running the extraction
+  // must not get a different debris volume each time. Same cloud in, same numbers out.
+  var rngState = 0x9E3779B9;
+  function rnd(){
+    rngState |= 0; rngState = (rngState + 0x6D2B79F5) | 0;
+    var t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  var ws = buildWorkingSet(slot);
+  if (ws.n < 200){ onFail(new Error('only ' + ws.n + ' points in the working set — too few to fit anything')); return; }
+
+  var P = ws.P, A = ws.A, C = ws.C;
+  var R = slot.radius || 10;
+  var K2 = GEO.K_SIGMA * GEO.K_SIGMA;
+  var EPS_FIX2 = Math.pow(0.004 * R, 2);        // no covariance: one global tolerance from scene scale
+  var EPS_MIN2 = Math.pow(0.0015 * R, 2);
+  var EPS_MAX2 = Math.pow(0.02 * R, 2);
+
+  var remaining = new Int32Array(ws.n);
+  for (var i = 0; i < ws.n; i++) remaining[i] = i;
+  var remCount = ws.n;
+  var inl = new Int32Array(ws.n);
+  var totalW = 0;
+  for (i = 0; i < ws.n; i++) totalW += A[i];
+
+  var planes = [], iter = 0, best = null, bestScore = 0, stage = 'ransac', gridDirty = true;
+  var t0 = performance.now();
+
+  function eps2At(i, nx, ny, nz){
+    if (!C) return EPS_FIX2;
+    var c = i * 6;
+    var vv = nx*(C[c]*nx + C[c+1]*ny + C[c+2]*nz)
+           + ny*(C[c+1]*nx + C[c+3]*ny + C[c+4]*nz)
+           + nz*(C[c+2]*nx + C[c+4]*ny + C[c+5]*nz);
+    var e2 = K2 * vv;
+    return e2 < EPS_MIN2 ? EPS_MIN2 : (e2 > EPS_MAX2 ? EPS_MAX2 : e2);
+  }
+
+  /* weighted score of one hypothesis over a strided sample of what is left */
+  function scoreOf(nx, ny, nz, d){
+    var stride = Math.max(1, Math.floor(remCount / GEO.SCORE_N));
+    var off = (rnd() * stride) | 0, s = 0;
+    for (var k = off; k < remCount; k += stride){
+      var idx = remaining[k], o = idx * 3;
+      var r = nx*P[o] + ny*P[o+1] + nz*P[o+2] - d;
+      if (r*r < eps2At(idx, nx, ny, nz)) s += A[idx];
+    }
+    return s * stride;                          // rescale the sample back to full support
+  }
+
+  function collect(nx, ny, nz, d, widen){
+    var kk = widen ? widen * widen : 1, cnt = 0, wsum = 0;
+    for (var k = 0; k < remCount; k++){
+      var idx = remaining[k], o = idx * 3;
+      var r = nx*P[o] + ny*P[o+1] + nz*P[o+2] - d;
+      if (r*r < eps2At(idx, nx, ny, nz) * kk){ inl[cnt++] = idx; wsum += A[idx]; }
+    }
+    return { count: cnt, weight: wsum };
+  }
+
+  /* Uniform 3-point sampling cannot find a small plane: if a wall holds 1.4% of the points,
+     P(all three land on it) is 3e-6 and 420 hypotheses find nothing. Points on one surface are
+     spatially close, so seed from a random point and draw its partners from the same grid cell. */
+  var gCell = 0, gnx = 1, gny = 1, gnz = 1, gminx = 0, gminy = 0, gminz = 0;
+  var cStart = null, cItems = null;
+
+  function buildGrid(){
+    gminx = Infinity; gminy = Infinity; gminz = Infinity;
+    var maxx = -Infinity, maxy = -Infinity, maxz = -Infinity, k, idx, o;
+    for (k = 0; k < remCount; k++){
+      idx = remaining[k]; o = idx*3;
+      if (P[o]   < gminx) gminx = P[o];   if (P[o]   > maxx) maxx = P[o];
+      if (P[o+1] < gminy) gminy = P[o+1]; if (P[o+1] > maxy) maxy = P[o+1];
+      if (P[o+2] < gminz) gminz = P[o+2]; if (P[o+2] > maxz) maxz = P[o+2];
+    }
+    var span = Math.max(maxx-gminx, maxy-gminy, maxz-gminz, 1e-6);
+    gCell = span / GEO.GRID_DIV;
+    gnx = Math.min(48, Math.max(1, Math.ceil((maxx-gminx) / gCell) + 1));
+    gny = Math.min(48, Math.max(1, Math.ceil((maxy-gminy) / gCell) + 1));
+    gnz = Math.min(48, Math.max(1, Math.ceil((maxz-gminz) / gCell) + 1));
+    var nc = gnx*gny*gnz;
+    cStart = new Int32Array(nc + 1);
+    cItems = new Int32Array(remCount);
+    for (k = 0; k < remCount; k++) cStart[cellOf(remaining[k]) + 1]++;
+    for (k = 0; k < nc; k++) cStart[k+1] += cStart[k];
+    var fill = new Int32Array(nc);
+    for (k = 0; k < remCount; k++){
+      var c = cellOf(remaining[k]);
+      cItems[cStart[c] + fill[c]++] = remaining[k];
+    }
+  }
+  function cellOf(i){
+    var o = i*3;
+    var ix = Math.min(gnx-1, Math.max(0, ((P[o]   - gminx) / gCell) | 0));
+    var iy = Math.min(gny-1, Math.max(0, ((P[o+1] - gminy) / gCell) | 0));
+    var iz = Math.min(gnz-1, Math.max(0, ((P[o+2] - gminz) / gCell) | 0));
+    return (iz*gny + iy)*gnx + ix;
+  }
+  function pickIn(c){
+    var st = cStart[c], en = cStart[c+1];
+    return en > st ? cItems[st + ((rnd() * (en - st)) | 0)] : -1;
+  }
+  function pickNear(i1){
+    var o = i1*3;
+    var ix = Math.min(gnx-1, Math.max(0, ((P[o]   - gminx) / gCell) | 0));
+    var iy = Math.min(gny-1, Math.max(0, ((P[o+1] - gminy) / gCell) | 0));
+    var iz = Math.min(gnz-1, Math.max(0, ((P[o+2] - gminz) / gCell) | 0));
+    var jx = Math.min(gnx-1, Math.max(0, ix + ((rnd()*3)|0) - 1));
+    var jy = Math.min(gny-1, Math.max(0, iy + ((rnd()*3)|0) - 1));
+    var jz = Math.min(gnz-1, Math.max(0, iz + ((rnd()*3)|0) - 1));
+    return pickIn((jz*gny + jy)*gnx + jx);
+  }
+
+  function hypothesise(){
+    var i1 = remaining[(rnd()*remCount)|0];
+    var c1 = cellOf(i1);
+    var i2 = pickIn(c1), i3 = pickIn(c1);
+    if (i2 < 0 || i3 < 0 || i2 === i1 || i3 === i1 || i2 === i3){
+      i2 = pickNear(i1); i3 = pickNear(i1);                  // widen to the 3x3x3 neighbourhood
+    }
+    if (i2 < 0 || i3 < 0) { i2 = remaining[(rnd()*remCount)|0]; i3 = remaining[(rnd()*remCount)|0]; }
+    if (i1 === i2 || i2 === i3 || i1 === i3) return null;
+    var a = i1*3, b = i2*3, c = i3*3;
+    var ax = P[a], ay = P[a+1], az = P[a+2];
+    var ux = P[b]-ax, uy = P[b+1]-ay, uz = P[b+2]-az;
+    var vx = P[c]-ax, vy = P[c+1]-ay, vz = P[c+2]-az;
+    var nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx;
+    var L = Math.sqrt(nx*nx + ny*ny + nz*nz);
+    var lu = Math.sqrt(ux*ux+uy*uy+uz*uz), lv = Math.sqrt(vx*vx+vy*vy+vz*vz);
+    if (L < 1e-6 * lu * lv || L < 1e-12) return null;      // reject collinear slivers
+    return [nx/L, ny/L, nz/L, (nx*ax + ny*ay + nz*az) / L];
+  }
+
+  /* weighted PCA refinement: the normal is the smallest-eigenvalue direction of the inlier scatter */
+  function refine(h){
+    var nx = h[0], ny = h[1], nz = h[2], d = h[3], res = null, cx = 0, cy = 0, cz = 0;
+    for (var pass = 0; pass < 2; pass++){
+      res = collect(nx, ny, nz, d);
+      if (res.count < GEO.MIN_INLIERS) return null;
+      var sw = 0, j, idx, o, wgt;
+      cx = 0; cy = 0; cz = 0;
+      for (j = 0; j < res.count; j++){
+        idx = inl[j]; o = idx*3; wgt = A[idx];
+        sw += wgt; cx += wgt*P[o]; cy += wgt*P[o+1]; cz += wgt*P[o+2];
+      }
+      if (!(sw > 0)) return null;
+      cx /= sw; cy /= sw; cz /= sw;
+      var xx=0, xy=0, xz=0, yy=0, yz=0, zz=0;
+      for (j = 0; j < res.count; j++){
+        idx = inl[j]; o = idx*3; wgt = A[idx];
+        var dx = P[o]-cx, dy = P[o+1]-cy, dz = P[o+2]-cz;
+        xx += wgt*dx*dx; xy += wgt*dx*dy; xz += wgt*dx*dz;
+        yy += wgt*dy*dy; yz += wgt*dy*dz; zz += wgt*dz*dz;
+      }
+      var ev = jacobi3([xx, xy, xz, yy, yz, zz]);
+      var mi = 0;
+      if (ev.vals[1] < ev.vals[mi]) mi = 1;
+      if (ev.vals[2] < ev.vals[mi]) mi = 2;
+      var ex = ev.vecs[0][mi], ey = ev.vecs[1][mi], ez = ev.vecs[2][mi];
+      var L = Math.sqrt(ex*ex + ey*ey + ez*ez);
+      if (!(L > 1e-9)) return null;
+      nx = ex/L; ny = ey/L; nz = ez/L;
+      d = nx*cx + ny*cy + nz*cz;
+    }
+    res = collect(nx, ny, nz, d);
+    if (res.count < GEO.MIN_INLIERS) return null;
+    return { nx: nx, ny: ny, nz: nz, d: d, cx: cx, cy: cy, cz: cz, res: res };
+  }
+
+  function finalisePlane(f){
+    var nx = f.nx, ny = f.ny, nz = f.nz, d = f.d, cnt = f.res.count;
+    if (ny < 0){ nx = -nx; ny = -ny; nz = -nz; d = -d; }    // orient consistently (normals point up-ish)
+    var bs = planeBasis(nx, ny, nz);
+    var ux=bs[0], uy=bs[1], uz=bs[2], vx=bs[3], vy=bs[4], vz=bs[5];
+
+    var sw = 0, cx = 0, cy = 0, cz = 0, j, idx, o, wgt;
+    for (j = 0; j < cnt; j++){ idx = inl[j]; o = idx*3; wgt = A[idx]; sw += wgt; cx += wgt*P[o]; cy += wgt*P[o+1]; cz += wgt*P[o+2]; }
+    cx /= sw; cy /= sw; cz /= sw;
+
+    var umin = Infinity, umax = -Infinity, vmin = Infinity, vmax = -Infinity, sr2 = 0;
+    var uu = new Float32Array(cnt), vv = new Float32Array(cnt);
+    for (j = 0; j < cnt; j++){
+      idx = inl[j]; o = idx*3;
+      var dx = P[o]-cx, dy = P[o+1]-cy, dz = P[o+2]-cz;
+      var a = dx*ux + dy*uy + dz*uz, b = dx*vx + dy*vy + dz*vz;
+      uu[j] = a; vv[j] = b;
+      if (a < umin) umin = a; if (a > umax) umax = a;
+      if (b < vmin) vmin = b; if (b > vmax) vmax = b;
+      var r = dx*nx + dy*ny + dz*nz;
+      sr2 += A[idx] * r * r;
+    }
+    var rms = Math.sqrt(sr2 / sw);
+
+    // occupancy area: rasterise the inliers in plane coords, so an L-shaped wall is not
+    // credited with its whole bounding rectangle
+    var du = Math.max(umax - umin, 1e-6), dv = Math.max(vmax - vmin, 1e-6);
+    var cell = Math.max(Math.sqrt(du*dv) / 48, 1e-6);
+    var gw = Math.min(256, Math.max(1, Math.ceil(du / cell))) , gh = Math.min(256, Math.max(1, Math.ceil(dv / cell)));
+    var occ = new Uint8Array(gw * gh);
+    var uh = new Int32Array(gw), vh = new Int32Array(gh);
+    for (j = 0; j < cnt; j++){
+      var gi = Math.min(gw-1, Math.max(0, Math.floor((uu[j]-umin) / du * gw)));
+      var gj = Math.min(gh-1, Math.max(0, Math.floor((vv[j]-vmin) / dv * gh)));
+      occ[gj*gw + gi] = 1;
+      uh[gi]++; vh[gj]++;
+    }
+    // A handful of stragglers must not stretch the patch across the whole scene: trim the extent
+    // to the 1st-99th percentile of the material, and measure area inside that trim.
+    function trim(hist, n){
+      var lo = 0, hi = hist.length - 1, acc = 0, cut = n * 0.01, k;
+      for (k = 0; k < hist.length; k++){ acc += hist[k]; if (acc >= cut){ lo = k; break; } }
+      acc = 0;
+      for (k = hist.length - 1; k >= 0; k--){ acc += hist[k]; if (acc >= cut){ hi = k; break; } }
+      if (hi < lo) { lo = 0; hi = hist.length - 1; }
+      return [lo, hi];
+    }
+    var tu = trim(uh, cnt), tv = trim(vh, cnt);
+    var cwu = du / gw, cwv = dv / gh;
+
+    /* A plane is the material that hangs together, not everything that happens to be coplanar with it.
+       Where a wall meets a floor the junction line is genuinely in the floor's plane and would stretch
+       its patch across the room, so keep only connected regions worth at least a fifth of the largest. */
+    var comp = new Int32Array(gw * gh).fill(-1), sizes = [], stack = [];
+    for (var cj = tv[0]; cj <= tv[1]; cj++) for (var ci = tu[0]; ci <= tu[1]; ci++){
+      var c0 = cj*gw + ci;
+      if (!occ[c0] || comp[c0] >= 0) continue;
+      var id = sizes.length, n2 = 0;
+      stack.length = 0; stack.push(c0); comp[c0] = id;
+      while (stack.length){
+        var cur = stack.pop(); n2++;
+        var xi = cur % gw, yj = (cur / gw) | 0;
+        for (var ddi = -1; ddi <= 1; ddi++) for (var ddj = -1; ddj <= 1; ddj++){
+          if (!ddi && !ddj) continue;
+          var ni = xi + ddi, nj = yj + ddj;
+          if (ni < tu[0] || ni > tu[1] || nj < tv[0] || nj > tv[1]) continue;
+          var nk = nj*gw + ni;
+          if (!occ[nk] || comp[nk] >= 0) continue;
+          comp[nk] = id; stack.push(nk);
+        }
+      }
+      sizes.push(n2);
+    }
+    var biggest = 0;
+    for (var si = 0; si < sizes.length; si++) if (sizes[si] > biggest) biggest = sizes[si];
+    var keepMin = biggest * 0.2;
+    var used = 0, kui0 = Infinity, kui1 = -Infinity, kvj0 = Infinity, kvj1 = -Infinity;
+    for (cj = tv[0]; cj <= tv[1]; cj++) for (ci = tu[0]; ci <= tu[1]; ci++){
+      var ck = cj*gw + ci;
+      if (comp[ck] < 0 || sizes[comp[ck]] < keepMin) continue;
+      used++;
+      if (ci < kui0) kui0 = ci; if (ci > kui1) kui1 = ci;
+      if (cj < kvj0) kvj0 = cj; if (cj > kvj1) kvj1 = cj;
+    }
+    if (used === 0){ kui0 = tu[0]; kui1 = tu[1]; kvj0 = tv[0]; kvj1 = tv[1]; used = 1; }
+    var cellA = cwu * cwv;
+    var area = used * cellA;
+    var nUmin = umin + kui0 * cwu, nUmax = umin + (kui1 + 1) * cwu;
+    var nVmin = vmin + kvj0 * cwv, nVmax = vmin + (kvj1 + 1) * cwv;
+    umin = nUmin; umax = nUmax; vmin = nVmin; vmax = nVmax;
+    var bboxA = Math.max((umax - umin) * (vmax - vmin), 1e-9);
+
+    // classification and the numbers that matter
+    var c = Math.abs(nx*UP.x + ny*UP.y + nz*UP.z);          // |n . z-hat|
+    var cls, tilt, drift = null, band = null;
+    if (c >= 0.906){                                        // within 25 deg of horizontal
+      cls = 'slab';  tilt = Math.acos(Math.min(1, c));       // tilt away from level
+    } else if (c <= 0.423){                                 // within 25 deg of vertical
+      cls = 'wall';  tilt = Math.asin(Math.min(1, c));       // tilt away from plumb
+      drift = Math.tan(tilt);                                // the drift ratio engineers use
+      band = driftBand(drift);
+    } else {
+      cls = 'incline'; tilt = Math.acos(Math.min(1, c));     // lean-to / collapsed slab angle
+    }
+
+    return {
+      id: planes.length + 1,
+      label: (cls === 'wall' ? 'W' : cls === 'slab' ? 'S' : 'I') + (planes.length + 1),
+      n: [nx, ny, nz], d: d, centroid: [cx, cy, cz],
+      u: [ux, uy, uz], v: [vx, vy, vz],
+      umin: umin, umax: umax, vmin: vmin, vmax: vmax,
+      count: cnt, weight: sw, support: sw / totalW,
+      area: area, bboxArea: bboxA, fill: Math.min(1, area / bboxA),
+      rms: rms, cls: cls, tilt: tilt, drift: drift, band: band
+    };
+  }
+
+  /* The tight fit can sit off-centre inside a thick surface, leaving a sliver that fits as its own
+     plane. Recentre the claim band on the weighted mean of the wide inliers before removing them. */
+  function claimBand(nx, ny, nz, d){
+    var wide = collect(nx, ny, nz, d, GEO.CLAIM);
+    var sw = 0, sr = 0;
+    for (var j = 0; j < wide.count; j++){
+      var idx = inl[j], o = idx*3, wgt = A[idx];
+      sw += wgt; sr += wgt * (nx*P[o] + ny*P[o+1] + nz*P[o+2] - d);
+    }
+    if (sw > 0) wide = collect(nx, ny, nz, d + sr/sw, GEO.CLAIM);
+    return wide;
+  }
+
+  /* one plane per physical surface: parallel, close, and overlapping means it is the same thing */
+  // two planes whose claim bands overlap are the same material, so this follows CLAIM rather
+  // than being a free parameter
+  var DEDUP_SEP = 2 * GEO.CLAIM * Math.sqrt(EPS_FIX2);
+  function coplanarWith(f){
+    for (var i = 0; i < planes.length; i++){
+      var q = planes[i];
+      if (Math.abs(f.nx*q.n[0] + f.ny*q.n[1] + f.nz*q.n[2]) < 0.995) continue;
+      if (Math.abs(f.nx*q.centroid[0] + f.ny*q.centroid[1] + f.nz*q.centroid[2] - f.d) > DEDUP_SEP) continue;
+      var dx = f.cx - q.centroid[0], dy = f.cy - q.centroid[1], dz = f.cz - q.centroid[2];
+      var a = dx*q.u[0] + dy*q.u[1] + dz*q.u[2], b = dx*q.v[0] + dy*q.v[1] + dz*q.v[2];
+      var mu = (q.umax - q.umin) * 0.25, mv = (q.vmax - q.vmin) * 0.25;
+      if (a < q.umin - mu || a > q.umax + mu || b < q.vmin - mv || b > q.vmax + mv) continue;
+      return q;                                   // same surface, already recorded
+    }
+    return null;
+  }
+
+  function removeInliers(cnt){
+    var keep = new Uint8Array(ws.n);
+    for (var j = 0; j < cnt; j++) keep[inl[j]] = 1;
+    var w = 0;
+    for (var k = 0; k < remCount; k++){ var idx = remaining[k]; if (!keep[idx]) remaining[w++] = idx; }
+    remCount = w;
+  }
+
+  /* ---------- debris: 2.5D column volume above the ground plane ---------- */
+  function debrisField(){
+    var groundY = null, gp = null;
+    for (var i = 0; i < planes.length; i++){
+      var pl = planes[i];
+      if (pl.cls !== 'slab' || pl.support < 0.03) continue;
+      if (groundY === null || pl.centroid[1] < groundY){ groundY = pl.centroid[1]; gp = pl; }
+    }
+    if (groundY === null){                                   // no slab found: use a low percentile of y
+      var ys = [];
+      for (i = 0; i < ws.n; i += Math.max(1, Math.floor(ws.n / 5000))) ys.push(P[i*3+1]);
+      ys.sort(function(a,b){ return a-b; });
+      groundY = ys[Math.floor(ys.length * 0.02)] || 0;
+    }
+
+    if (remCount < 50) return { groundY: groundY, groundPlane: gp ? gp.label : null, clusters: [], totalVolume: 0, cell: 0 };
+
+    var minx = Infinity, maxx = -Infinity, minz = Infinity, maxz = -Infinity, k, idx, o;
+    for (k = 0; k < remCount; k++){
+      idx = remaining[k]; o = idx*3;
+      if (P[o] < minx) minx = P[o]; if (P[o] > maxx) maxx = P[o];
+      if (P[o+2] < minz) minz = P[o+2]; if (P[o+2] > maxz) maxz = P[o+2];
+    }
+    var cell = Math.max((maxx - minx + maxz - minz) / 2 / 96, R / 400);
+    var gw = Math.min(400, Math.max(2, Math.ceil((maxx - minx) / cell) + 1));
+    var gh = Math.min(400, Math.max(2, Math.ceil((maxz - minz) / cell) + 1));
+    var cw = (maxx - minx) / gw || cell, ch = (maxz - minz) / gh || cell;
+    var H = new Float32Array(gw * gh);
+    for (k = 0; k < remCount; k++){
+      idx = remaining[k]; o = idx*3;
+      var h = P[o+1] - groundY;
+      if (h <= 0) continue;
+      var gi = Math.min(gw-1, Math.max(0, Math.floor((P[o] - minx) / cw)));
+      var gj = Math.min(gh-1, Math.max(0, Math.floor((P[o+2] - minz) / ch)));
+      var gk2 = gj*gw + gi;
+      if (h > H[gk2]) H[gk2] = h;
+    }
+
+    var hmin = 0.02 * R, seen = new Uint8Array(gw * gh), clusters = [], cellArea = cw * ch, total = 0;
+    var stack = [];
+    for (var s = 0; s < gw*gh; s++){
+      if (seen[s] || H[s] <= hmin) continue;
+      stack.length = 0; stack.push(s); seen[s] = 1;
+      var vol = 0, cells = 0, maxh = 0, sx = 0, sz = 0;
+      while (stack.length){
+        var cur = stack.pop();
+        var ci = cur % gw, cj = (cur / gw) | 0, hh = H[cur];
+        vol += hh * cellArea; cells++;
+        if (hh > maxh) maxh = hh;
+        sx += minx + (ci + 0.5) * cw; sz += minz + (cj + 0.5) * ch;
+        for (var di = -1; di <= 1; di++) for (var dj = -1; dj <= 1; dj++){
+          if (!di && !dj) continue;
+          var ni = ci + di, nj = cj + dj;
+          if (ni < 0 || nj < 0 || ni >= gw || nj >= gh) continue;
+          var nk = nj*gw + ni;
+          if (seen[nk] || H[nk] <= hmin) continue;
+          seen[nk] = 1; stack.push(nk);
+        }
+      }
+      total += vol;
+      if (cells >= 4) clusters.push({ volume: vol, footprint: cells * cellArea, maxHeight: maxh,
+                                      centre: [sx/cells, groundY, sz/cells], cells: cells });
+    }
+    clusters.sort(function(a,b){ return b.volume - a.volume; });
+    clusters = clusters.slice(0, 10);
+    for (var ci2 = 0; ci2 < clusters.length; ci2++) clusters[ci2].id = ci2 + 1;
+    return { groundY: groundY, groundPlane: gp ? gp.label : null, clusters: clusters,
+             totalVolume: total, cell: cell };
+  }
+
+  /* ---------- the pump ---------- */
+  function step(){
+    if (stage === 'ransac'){
+      if (gridDirty){ buildGrid(); gridDirty = false; return false; }
+      var batch = 40;
+      while (batch-- > 0 && iter < GEO.ITER){
+        iter++;
+        var h = hypothesise();
+        if (!h) continue;
+        var sc = scoreOf(h[0], h[1], h[2], h[3]);
+        if (sc > bestScore){ bestScore = sc; best = h; }
+      }
+      if (iter >= GEO.ITER) stage = 'commit';
+      return false;
+    }
+    if (stage === 'commit'){
+      var done = false;
+      if (!best || bestScore < GEO.MIN_SUPPORT * totalW) done = true;
+      else {
+        var f = refine(best);
+        if (!f || f.res.weight < GEO.MIN_SUPPORT * totalW) done = true;
+        else {
+          var dup = coplanarWith(f);
+          if (dup){                            // same physical surface: absorb, do not record again
+            var band = claimBand(f.nx, f.ny, f.nz, f.d);
+            dup.claimed = (dup.claimed || dup.count) + band.count;
+            removeInliers(band.count);
+          } else {
+            var pl = finalisePlane(f);         // stats come from the tight fit
+            planes.push(pl);
+            var wide = claimBand(pl.n[0], pl.n[1], pl.n[2], pl.d);
+            pl.claimed = wide.count;           // but the whole thickness leaves the pool
+            removeInliers(wide.count);
+          }
+          gridDirty = true;
+        }
+      }
+      if (done || planes.length >= GEO.MAX_PLANES || remCount < Math.max(400, ws.n * 0.02)) stage = 'debris';
+      else { iter = 0; best = null; bestScore = 0; stage = 'ransac'; }
+      return false;
+    }
+    if (stage === 'debris'){
+      var deb = debrisField();
+      var residualW = 0;
+      for (var k = 0; k < remCount; k++) residualW += A[remaining[k]];
+      slot.geom = {
+        planes: planes, debris: deb,
+        workingSet: ws.n, sampleStep: ws.step, radius: R,
+        usedCovariance: !!C, totalWeight: totalW,
+        residualPoints: remCount, residualFrac: residualW / totalW,
+        ms: Math.round(performance.now() - t0)
+      };
+      stage = 'done';
+      return true;
+    }
+    return true;
+  }
+
+  function pump(){
+    var tick = performance.now();
+    try {
+      while (performance.now() - tick < GEO.BUDGET_MS){
+        if (step()){ onDone(slot.geom); return; }
+      }
+    } catch (err){ onFail(err); return; }
+    onProgress(planes.length, stage, 1 - remCount / ws.n);
+    setTimeout(pump, 0);
+  }
+  setTimeout(pump, 0);
+}
+
+/* ---------- plane overlay in 3D ---------- */
+var planeGroup = new THREE.Group();
+scene.add(planeGroup);
+var showPlanes = true;
+var planeLabels = [];          // { el, pos } drawn in the same overlay as the site labels
+
+function clearOverlay(){
+  for (var i = planeGroup.children.length - 1; i >= 0; i--){
+    var c = planeGroup.children[i];
+    planeGroup.remove(c);
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) c.material.dispose();
+  }
+  for (i = 0; i < planeLabels.length; i++){
+    if (planeLabels[i].el.parentNode) planeLabels[i].el.parentNode.removeChild(planeLabels[i].el);
+  }
+  planeLabels = [];
+}
+
+function planeHex(p){ return p.cls === 'wall' ? p.band.hex : CLS_HEX[p.cls]; }
+function planeCss(p){ return p.cls === 'wall' ? p.band.css : CLS_CSS[p.cls]; }
+
+function buildOverlay(geom){
+  clearOverlay();
+  if (!geom || !showPlanes) return;
+  for (var i = 0; i < geom.planes.length; i++){
+    var p = geom.planes[i], hex = planeHex(p);
+    var c = p.centroid, u = p.u, v = p.v;
+    function corner(a, b){
+      return [c[0] + u[0]*a + v[0]*b, c[1] + u[1]*a + v[1]*b, c[2] + u[2]*a + v[2]*b];
+    }
+    var q = [corner(p.umin, p.vmin), corner(p.umax, p.vmin), corner(p.umax, p.vmax), corner(p.umin, p.vmax)];
+    var verts = new Float32Array([].concat(q[0], q[1], q[2], q[3]));
+
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    g.setIndex([0,1,2, 0,2,3]);
+    var mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+      color: hex, transparent: true,
+      opacity: 0.04 + 0.11 * p.fill,        // paint in proportion to how much of the patch is real surface
+      side: THREE.DoubleSide, depthWrite: false
+    }));
+    mesh.renderOrder = 4;
+    planeGroup.add(mesh);
+
+    var lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.BufferAttribute(verts.slice(), 3));
+    var line = new THREE.LineLoop(lg, new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.9 }));
+    line.renderOrder = 5;
+    planeGroup.add(line);
+
+    // a short normal stub, so orientation reads at a glance when you orbit
+    var len = Math.max(p.umax - p.umin, p.vmax - p.vmin) * 0.12;
+    var ng = new THREE.BufferGeometry();
+    ng.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+      c[0], c[1], c[2], c[0] + p.n[0]*len, c[1] + p.n[1]*len, c[2] + p.n[2]*len ]), 3));
+    planeGroup.add(new THREE.Line(ng, new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.55 })));
+
+    var el = document.createElement('div');
+    el.className = 'plabel';
+    el.style.borderColor = planeCss(p);
+    el.style.color = planeCss(p);
+    el.textContent = p.label + (p.cls === 'wall' ? '  ' + (p.drift*100).toFixed(1) + '%'
+                                                 : '  ' + (p.tilt * 180/Math.PI).toFixed(0) + '°');
+    (function(idx){ el.addEventListener('click', function(e){ e.stopPropagation(); focusPlane(idx); }); })(i);
+    labelLayer.appendChild(el);
+    planeLabels.push({ el: el, pos: new THREE.Vector3(c[0], c[1], c[2]) });
+  }
+}
+
+function refreshOverlay(){
+  var s = slots[activeSlot];
+  buildOverlay(s && s.geom ? s.geom : null);
+}
+
+function focusPlane(i){
+  var s = slots[activeSlot];
+  if (!s || !s.geom || !s.geom.planes[i]) return;
+  var p = s.geom.planes[i];
+  flyGoal = new THREE.Vector3(p.centroid[0], p.centroid[1], p.centroid[2]);
+  selectedPlane = i;
+  renderGeo();
+}
+
+/* ---------- units ---------- */
+var metresPerUnit = 1;         // scan units are uncalibrated; ARKit-derived exports are usually metric
+function mLen(x){ return x * metresPerUnit; }
+function mArea(x){ return x * metresPerUnit * metresPerUnit; }
+function mVol(x){ return x * metresPerUnit * metresPerUnit * metresPerUnit; }
+function fmtNum(x, dp){ return x.toFixed(dp == null ? 1 : dp); }
+
+/* ---------- GEO tab ---------- */
+var selectedPlane = -1;
+
+/* A sliver caught at a steep angle produces a huge drift ratio off almost no material. Those
+   stay in the list with their support and fill on show, but they must not set the headline. */
+function wellSupported(planes){
+  return planes.filter(function(p){ return p.support >= 0.01 && p.fill >= 0.25; });
+}
+
+function runGeometry(){
+  var s = slots[activeSlot];
+  if (!s){ setStatus('slot ' + activeSlot + ' is empty — load a .ply or build the synthetic scene first'); return; }
+  var btn = $('#btn-geom');
+  btn.disabled = true; btn.textContent = 'EXTRACTING…';
+  showTab('geo');
+  $('#geo-empty').hidden = true;
+  $('#geo-body').hidden = false;
+  $('#geo-summary').innerHTML = '<div class="prog">fitting planes…</div>';
+  setStatus('extracting geometry from ' + s.name + ' …');
+
+  extractGeometry(s,
+    function(nPlanes, stage, frac){
+      $('#geo-summary').innerHTML = '<div class="prog">' +
+        (stage === 'debris' ? 'measuring debris volume…' : 'fitting planes… ' + nPlanes + ' found') +
+        '<span class="bar"><i style="width:' + Math.round(clamp01(frac) * 100) + '%"></i></span></div>';
+      setStatus('extracting geometry — ' + nPlanes + ' planes, ' + Math.round(clamp01(frac)*100) + '% of points assigned');
+    },
+    function(geom){
+      btn.disabled = false; btn.textContent = 'GEOMETRY';
+      selectedPlane = -1;
+      refreshOverlay();
+      renderGeo();
+      renderQueue();
+      syncAssess();
+      var walls = geom.planes.filter(function(p){ return p.cls === 'wall'; });
+      var worst = wellSupported(walls).reduce(function(a, b){ return (!a || b.drift > a.drift) ? b : a; }, null);
+      setStatus(geom.planes.length + ' planes in ' + geom.ms + ' ms · ' + walls.length + ' walls' +
+                (worst ? ' · worst drift ' + (worst.drift*100).toFixed(1) + '% ' + worst.band.name : '') +
+                ' · debris ' + fmtNum(mVol(geom.debris.totalVolume)) + ' m³');
+    },
+    function(err){
+      btn.disabled = false; btn.textContent = 'GEOMETRY';
+      console.error(err);
+      $('#geo-body').hidden = true; $('#geo-empty').hidden = false;
+      setStatus('geometry extraction failed: ' + err.message);
+      alert('Could not extract geometry.\n\n' + err.message);
+    });
+}
+
+function renderGeo(){
+  var s = slots[activeSlot], g = s && s.geom;
+  $('#geo-empty').hidden = !!g;
+  $('#geo-body').hidden = !g;
+  if (!g) return;
+
+  var walls = [], slabs = [], incl = [];
+  g.planes.forEach(function(p){ (p.cls === 'wall' ? walls : p.cls === 'slab' ? slabs : incl).push(p); });
+  var worst = wellSupported(walls).reduce(function(a, b){ return (!a || b.drift > a.drift) ? b : a; }, null);
+
+  $('#geo-summary').innerHTML =
+    '<div class="gsum">' +
+      '<div><span>PLANES</span><b>' + g.planes.length + '</b></div>' +
+      '<div><span>WALLS</span><b>' + walls.length + '</b></div>' +
+      '<div><span>SLABS</span><b>' + slabs.length + '</b></div>' +
+      '<div><span>INCLINED</span><b>' + incl.length + '</b></div>' +
+    '</div>' +
+    '<div class="gsum">' +
+      '<div><span>WORST DRIFT</span><b style="color:' + (worst ? worst.band.css : '#8b93a1') + '">' +
+        (worst ? (worst.drift*100).toFixed(2) + '%' : '—') + '</b></div>' +
+      '<div><span>DEBRIS VOL</span><b>' + fmtNum(mVol(g.debris.totalVolume)) + ' m³</b></div>' +
+      '<div><span>UNASSIGNED</span><b>' + Math.round(g.residualFrac * 100) + '%</b></div>' +
+      '<div><span>FIT TIME</span><b>' + g.ms + ' ms</b></div>' +
+    '</div>' +
+    '<div class="gnote">Worst drift counts only walls holding at least 1% of the cloud at 25% fill or better; ' +
+      'thinner fragments still appear in the list, with their support and fill shown. ' +
+      fmtInt(g.workingSet) + ' points fitted · epsilon from ' +
+      (g.usedCovariance ? 'each Gaussian’s own extent along the normal (n′Σn)'
+                        : 'scene scale — this cloud carries no scale_*/rot_*, so there is no per-point covariance') +
+    '</div>';
+
+  var html = '<div class="ghead">WALLS &mdash; VERTICALITY</div>';
+  if (!walls.length) html += '<div class="gempty">No near-vertical planes found.</div>';
+  walls.sort(function(a,b){ return b.drift - a.drift; });
+  walls.forEach(function(p){ html += planeRow(p, g); });
+
+  html += '<div class="ghead">SLABS &amp; INCLINED SURFACES</div>';
+  var rest = slabs.concat(incl);
+  if (!rest.length) html += '<div class="gempty">No horizontal or inclined planes found.</div>';
+  rest.sort(function(a,b){ return b.area - a.area; });
+  rest.forEach(function(p){ html += planeRow(p, g); });
+  $('#geo-planes').innerHTML = html;
+
+  Array.prototype.forEach.call($('#geo-planes').querySelectorAll('.grow'), function(row){
+    row.addEventListener('click', function(){ focusPlane(parseInt(row.getAttribute('data-i'), 10)); });
+  });
+
+  var d = g.debris, dh = '<div class="ghead">DEBRIS &mdash; BULK VOLUME ABOVE GROUND</div>';
+  dh += '<div class="gnote">Ground taken from ' + (d.groundPlane ? 'plane ' + d.groundPlane :
+        'the 2nd percentile of height (no ground slab was fitted)') +
+        '. Column method: each grid cell contributes its height above ground &times; cell area.</div>';
+  if (!d.clusters.length) dh += '<div class="gempty">No debris above the ground plane.</div>';
+  d.clusters.forEach(function(c){
+    dh += '<div class="grow deb">' +
+      '<div class="top"><span class="tag" style="border-color:#8b93a1;color:#8b93a1">D' + c.id + '</span>' +
+      '<span class="nm">debris pile ' + c.id + '</span>' +
+      '<span class="num">' + fmtNum(mVol(c.volume)) + ' m³</span></div>' +
+      '<div class="meta">footprint ' + fmtNum(mArea(c.footprint)) + '\u00a0m² · max height ' +
+        fmtNum(mLen(c.maxHeight), 2) + '\u00a0m · ' + c.cells + ' cells</div></div>';
+  });
+  $('#geo-debris').innerHTML = dh;
+}
+
+function planeRow(p, g){
+  var i = g.planes.indexOf(p);
+  var css = planeCss(p);
+  var head = p.cls === 'wall'
+    ? '<span class="num" style="color:' + css + '">' + (p.drift*100).toFixed(2) + '%</span>'
+    : '<span class="num" style="color:' + css + '">' + (p.tilt*180/Math.PI).toFixed(1) + '°</span>';
+  var sub = p.cls === 'wall'
+    ? 'out of plumb ' + (p.tilt*180/Math.PI).toFixed(2) + '° · ' + p.band.name
+    : (p.cls === 'slab' ? 'off level' : 'lean-to angle') + ' from horizontal';
+  return '<div class="grow' + (selectedPlane === i ? ' sel' : '') + '" data-i="' + i + '">' +
+    '<div class="top">' +
+      '<span class="tag" style="border-color:' + css + ';color:' + css + '">' + p.label + '</span>' +
+      '<span class="nm">' + sub + '</span>' + head +
+    '</div>' +
+    '<div class="meta">area ' + fmtNum(mArea(p.area)) + '\u00a0m² · fill ' + Math.round(p.fill*100) + '%' +
+      ' · support ' + (p.support*100).toFixed(1) + '% · rms ' + fmtNum(mLen(p.rms), 3) + '\u00a0m' +
+      ' · n [' + p.n.map(function(v){ return v.toFixed(2); }).join(' ') + ']</div>' +
+    '</div>';
+}
+
+/* ---------- geometry attached to a site (evidence, not a slider value) ---------- */
+function nearestPlane(site){
+  var s = slots[activeSlot], g = s && s.geom;
+  if (!g) return null;
+  var best = null, bd = Infinity;
+  for (var i = 0; i < g.planes.length; i++){
+    var p = g.planes[i];
+    var dx = site.pos.x - p.centroid[0], dy = site.pos.y - p.centroid[1], dz = site.pos.z - p.centroid[2];
+    var dist = Math.abs(dx*p.n[0] + dy*p.n[1] + dz*p.n[2]);
+    var a = dx*p.u[0] + dy*p.u[1] + dz*p.u[2];
+    var b = dx*p.v[0] + dy*p.v[1] + dz*p.v[2];
+    var mu = (p.umax - p.umin) * 0.12, mv = (p.vmax - p.vmin) * 0.12;   // small tolerance outside the patch
+    if (a < p.umin - mu || a > p.umax + mu || b < p.vmin - mv || b > p.vmax + mv) continue;
+    if (dist < bd){ bd = dist; best = { plane: p, index: i, dist: dist }; }
+  }
+  if (!best || bd > 0.05 * g.radius) return null;
+  return best;
+}
+
+/* =====================================================================
+   11. MARKER PLACEMENT (raycast against the visible point cloud)
+   ===================================================================== */
+function visibleClouds(){
+  var out = [];
+  for (var k in slots) if (slots[k] && slots[k].obj.visible) out.push(slots[k].obj);
+  return out;
+}
+
+function handleClick(e){
+  if (!markMode) return;
+  var targets = visibleClouds();
+  if (!targets.length){
+    setStatus('nothing loaded — click SYNTHETIC SCENE or LOAD .PLY first');
+    return;
+  }
+  var rect = canvas.getBoundingClientRect();
+  var ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  raycaster.setFromCamera(ndc, camera);
+  // threshold must scale with zoom or picking fails at distance
+  raycaster.params.Points.threshold = Math.max(0.02, orbit.radius * 0.012);
+
+  var hits = raycaster.intersectObjects(targets, false);
+  if (!hits.length){
+    setStatus('no surface under the cursor — aim at the rubble and click again (ESC cancels)');
+    return;                                   // stay in marking mode on a miss
+  }
+  addSite(hits[0].point);
+  setMark(false);
+}
+
+$('#btn-geom').addEventListener('click', runGeometry);
+$('#btn-planes').addEventListener('click', function(){
+  showPlanes = !showPlanes;
+  $('#btn-planes').classList.toggle('on', showPlanes);
+  refreshOverlay();
+});
+$('#f-scale').addEventListener('input', function(){
+  var v = parseFloat($('#f-scale').value);
+  metresPerUnit = (isFinite(v) && v > 0) ? v : 1;
+  renderGeo(); syncAssess();
+});
+$('#btn-mark').addEventListener('click', function(){ setMark(!markMode); });
+$('#btn-home').addEventListener('click', resetView);
+$('#btn-flip').addEventListener('click', flipActive);
+
+function flipActive(){
+  var s = slots[activeSlot];
+  if (!s){ setStatus('slot ' + activeSlot + ' is empty — nothing to reorient'); return; }
+  s.orient = (s.orient + 1) % ORIENTS.length;
+  s.obj.rotation.x = ORIENTS[s.orient].rx;
+  // Markers hold their world positions; reorienting moves the cloud under them by design.
+  var note = '';
+  if (s.geom){                       // every angle was measured against world up, so this invalidates them
+    s.geom = null; clearOverlay(); renderGeo(); syncAssess();
+    note = ' — extracted geometry cleared, re-run GEOMETRY';
+  }
+  frameSlot(activeSlot);
+  setStatus('slot ' + activeSlot + ' up-axis ' + ORIENTS[s.orient].name + note +
+            ' — if the scene is mirrored rather than inverted that is a handedness issue, not this rotation');
+}
+
+/* =====================================================================
+   12. EXPORT
+   ===================================================================== */
+var NOTE = 'Ranked prior for incident command review. This is NOT an autonomous dispatch order — ' +
+           'every input is an operator estimate and the ordering is only as good as those estimates.';
+var MODEL_TEXT = 'V_i(t) = n*q*r*exp(-lambda*t); greedy index rho = (n*q*r*lambda)/max(0.1, tau) ' +
+                 '[expected lives per crew-hour, ranked descending]';
+var GEO_NOTE = 'Planes fitted by opacity-weighted RANSAC with a per-Gaussian tolerance eps_i = K*sqrt(n\'*Sigma_i*n). ' +
+               'Drift ratio = tan(tilt from plumb) and is scale-free. Areas and volumes are only metric if ' +
+               'metres_per_unit is correct; debris volume is a column measure that assumes each pile is solid ' +
+               'to the ground plane. Geometry is evidence for an assessor, not a slider value.';
+
+function download(filename, text, mime){
+  var blob = new Blob([text], { type: mime });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+}
+
+function r3(x){ return Number(x.toFixed(3)); }
+
+function geometryExport(){
+  var sl = slots[activeSlot], g = sl && sl.geom;
+  if (!g) return null;
+  return {
+    scan: sl.name, slot: activeSlot,
+    metres_per_unit: metresPerUnit,
+    scale_calibrated: metresPerUnit !== 1,
+    scene_radius: r3(g.radius),
+    working_set_points: g.workingSet,
+    used_per_gaussian_covariance: g.usedCovariance,
+    unassigned_fraction: Number(g.residualFrac.toFixed(4)),
+    fit_ms: g.ms,
+    planes: g.planes.map(function(p){
+      return {
+        label: p.label, surface_class: p.cls,
+        normal: p.n.map(r3), plane_offset_d: r3(p.d), centroid: p.centroid.map(r3),
+        tilt_deg: Number((p.tilt * 180/Math.PI).toFixed(3)),
+        drift_ratio: p.drift == null ? null : Number(p.drift.toFixed(5)),
+        drift_band: p.band ? p.band.name : null,
+        area_m2: Number(mArea(p.area).toFixed(3)),
+        fill_fraction: Number(p.fill.toFixed(3)),
+        support_fraction: Number(p.support.toFixed(4)),
+        rms_residual_m: Number(mLen(p.rms).toFixed(4)),
+        inlier_points: p.count
+      };
+    }),
+    debris: {
+      ground_height: r3(g.debris.groundY),
+      ground_plane: g.debris.groundPlane,
+      total_volume_m3: Number(mVol(g.debris.totalVolume).toFixed(2)),
+      piles: g.debris.clusters.map(function(c){
+        return { id: c.id,
+                 volume_m3: Number(mVol(c.volume).toFixed(2)),
+                 footprint_m2: Number(mArea(c.footprint).toFixed(2)),
+                 max_height_m: Number(mLen(c.maxHeight).toFixed(2)),
+                 centre: c.centre.map(r3) };
+      })
+    }
+  };
+}
+
+function queueRecords(){
+  return ranked().map(function(s, i){
+    var np = nearestPlane(s);
+    return {
+      rank: i + 1,
+      name: s.name,
+      rho_lives_per_crew_hour: Number(rho(s).toFixed(6)),
+      occupancy_persons: s.n,
+      p_trapped_alive: s.q,
+      p_extraction_success: s.r,
+      collapse_type: s.type,
+      lambda_per_hour: LAMBDA[s.type],
+      crew_hours_tau: s.tau,
+      confidence: s.conf,
+      position: { x: Number(s.pos.x.toFixed(4)), y: Number(s.pos.y.toFixed(4)), z: Number(s.pos.z.toFixed(4)) },
+      geometry: np ? {
+        plane: np.plane.label,
+        surface_class: np.plane.cls,
+        tilt_deg: Number((np.plane.tilt * 180/Math.PI).toFixed(3)),
+        drift_ratio: np.plane.drift == null ? null : Number(np.plane.drift.toFixed(5)),
+        drift_band: np.plane.band ? np.plane.band.name : null
+      } : null
+    };
+  });
+}
+
+function stamp(){ return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19); }
+
+$('#btn-json').addEventListener('click', function(){
+  if (!sites.length){ alert('The dispatch queue is empty — place at least one site before exporting.'); return; }
+  var payload = { generated: new Date().toISOString(), model: MODEL_TEXT, note: NOTE,
+                  geometry_note: GEO_NOTE, geometry: geometryExport(), queue: queueRecords() };
+  download('rubble-queue-' + stamp() + '.json', JSON.stringify(payload, null, 2), 'application/json');
+  setStatus('exported JSON — ' + sites.length + ' sites');
+});
+
+$('#btn-csv').addEventListener('click', function(){
+  if (!sites.length){ alert('The dispatch queue is empty — place at least one site before exporting.'); return; }
+  var cols = ['rank','name','rho_lives_per_crew_hour','occupancy_persons','p_trapped_alive',
+              'p_extraction_success','collapse_type','lambda_per_hour','crew_hours_tau','confidence','x','y','z',
+              'plane','surface_class','tilt_deg','drift_ratio','drift_band'];
+  function cell(v){
+    var s = String(v);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  var rows = [cols.join(',')];
+  queueRecords().forEach(function(r){
+    var gm = r.geometry || {};
+    rows.push([r.rank, r.name, r.rho_lives_per_crew_hour, r.occupancy_persons, r.p_trapped_alive,
+               r.p_extraction_success, r.collapse_type, r.lambda_per_hour, r.crew_hours_tau,
+               r.confidence, r.position.x, r.position.y, r.position.z,
+               gm.plane == null ? '' : gm.plane, gm.surface_class == null ? '' : gm.surface_class,
+               gm.tilt_deg == null ? '' : gm.tilt_deg, gm.drift_ratio == null ? '' : gm.drift_ratio,
+               gm.drift_band == null ? '' : gm.drift_band].map(cell).join(','));
+  });
+  download('rubble-queue-' + stamp() + '.csv', rows.join('\n') + '\n', 'text/csv');
+  setStatus('exported CSV — ' + sites.length + ' sites');
+});
+
+/* =====================================================================
+   12A. AGENT SWARM — UI shell only (no reasoning, no network)
+
+   Numbered 12A rather than renumbering 13/14: the geometry sections are under
+   concurrent edit and a renumber would collide for nothing.
+
+   One agent per ranking parameter, each with an evidence source and a cheap
+   verifier. Nothing here computes anything. Attach a reasoner by calling
+   RubbleSwarm.propose(key, value, rationale) and the card fills in; the slider
+   is written only by an explicit operator APPLY, which is logged.
+   ===================================================================== */
+var SWARM_AGENTS = [
+  { key:'records', name:'RECORDS', param:'n', label:'n — occupancy',
+    evidence:'rosters, shift patterns, witness statements, time-of-day occupancy',
+    verifier:'two independent sources; disagreement widens the band instead of averaging it away' },
+  { key:'access', name:'ACCESS', param:'r', label:'r — P(extraction)',
+    evidence:'plane extents, debris columns, detected ground plane, route clearance',
+    verifier:'re-run the route with the largest debris cluster removed; r must not jump a band' },
+  { key:'volume', name:'VOLUME', param:'tau', label:'\u03c4 — crew-hours',
+    evidence:'debris volume by column method, plane fill%, breaching and shoring burden',
+    verifier:'column volume against a convex-hull bound; a gap past tolerance flags an overhang' },
+  { key:'morphology', name:'MORPHOLOGY', param:'type', label:'\u03bb — collapse type',
+    evidence:'plane classes, slab tilt distribution, lean-to angles, wall drift bands',
+    verifier:'re-fit on a held-out half of the cloud; the \u03bb band must agree' },
+  { key:'corroboration', name:'CORROBORATION', param:'conf', label:'confidence',
+    evidence:'agreement across the other four agents and the quality of what they read',
+    verifier:'flags LOW whenever any upstream agent failed its own verifier' }
+];
+
+var proposals = {};        // key -> { value, rationale, at }
+var overrideLog = [];      // { at, agent, label, from, to }
+
+var swarmCtxEl = $('#swarm-ctx'), swarmAgentsEl = $('#swarm-agents'), swarmLogEl = $('#swarm-log');
+
+function agentByKey(k){
+  for (var i = 0; i < SWARM_AGENTS.length; i++) if (SWARM_AGENTS[i].key === k) return SWARM_AGENTS[i];
+  return null;
+}
+
+/* Display form of a parameter as the operator currently has it. */
+function paramText(s, param){
+  if (!s) return '\u2014';
+  if (param === 'type') return TYPE_LABEL[s.type] + ' (\u03bb ' + LAMBDA[s.type].toFixed(3) + ')';
+  if (param === 'conf') return String(s.conf).toUpperCase();
+  if (param === 'n')    return String(s.n);
+  if (param === 'tau')  return (+s.tau).toFixed(1);
+  return (+s[param]).toFixed(2);
+}
+
+/* A proposal is refused unless it is the right shape for the slider it targets, so a
+   malformed reasoner cannot push a site into a state the UI cannot represent. */
+function coerce(param, v){
+  if (param === 'type') return LAMBDA.hasOwnProperty(v) ? v : null;
+  if (param === 'conf') return (v === 'low' || v === 'med' || v === 'high') ? v : null;
+  if (typeof v !== 'number' || !isFinite(v)) return null;
+  if (param === 'n')   return Math.round(clamp(v, 0, 50));
+  if (param === 'r')   return clamp(v, 0, 1);
+  if (param === 'tau') return clamp(v, 0.5, 24);
+  return null;
+}
+
+function swarmContext(){
+  var s = getSite(selected), slot = slots[activeSlot], g = slot && slot.geom;
+  var ctx = {
+    generated: new Date().toISOString(),
+    framing: 'Advisory context for assisted assessment. Agents propose, the operator applies. Not a dispatch order.',
+    site: null, scan: null, geometry: null,
+    ranking: ranked().map(function(x, i){ return { rank: i+1, name: x.name, rho: +rho(x).toFixed(4) }; })
+  };
+  if (s){
+    ctx.site = { id:s.id, name:s.name, n:s.n, q:s.q, r:s.r, tau:s.tau,
+                 collapse_type:s.type, lambda:LAMBDA[s.type],
+                 confidence:s.conf, rho:+rho(s).toFixed(4) };
+    try { var np = nearestPlane(s); ctx.site.nearest_plane = np ? np.plane.label : null; }
+    catch (err){ ctx.site.nearest_plane = null; }
+  }
+  if (slot){
+    ctx.scan = { slot:activeSlot, source:slot.name, points_rendered:slot.kept, points_total:slot.total,
+                 has_covariance: !!slot.cov, metres_per_unit: metresPerUnit,
+                 scale_calibrated: metresPerUnit !== 1 };
+  }
+  if (g){
+    try {
+      ctx.geometry = {
+        extraction_ms: g.ms,
+        used_covariance: !!g.usedCovariance,
+        residual_fraction: +(g.residualFrac || 0).toFixed(4),
+        planes: (g.planes || []).map(function(p){
+          var o = { label:p.label, cls:p.cls,
+                    area_m2:+mArea(p.area).toFixed(2), fill:+p.fill.toFixed(3),
+                    support:+p.support.toFixed(4), rms_m:+mLen(p.rms).toFixed(4),
+                    tilt_deg:+(p.tilt * 180 / Math.PI).toFixed(2) };
+          if (p.cls === 'wall' && p.drift != null){
+            o.drift_ratio = +p.drift.toFixed(4);
+            o.drift_band = p.band ? p.band.name : null;
+          }
+          return o;
+        }),
+        debris: g.debris ? { total_volume_m3:+mVol(g.debris.totalVolume).toFixed(2),
+                             clusters:(g.debris.clusters || []).length,
+                             ground_plane:g.debris.groundPlane } : null
+      };
+    } catch (err){ console.error(err); ctx.geometry = null; }
+  }
+  return ctx;
+}
+
+function renderSwarm(){
+  var s = getSite(selected), slot = slots[activeSlot], g = slot && slot.geom;
+  var ctx = swarmContext();
+  var chars = JSON.stringify(ctx).length;
+
+  swarmCtxEl.innerHTML =
+    '<div>SITE&nbsp;&nbsp;<b>' + (s ? escapeHtml(s.name) + '</b> \u00b7 \u03c1 ' + rho(s).toFixed(3) +
+        ' \u00b7 n ' + s.n + ' q ' + s.q.toFixed(2) + ' r ' + s.r.toFixed(2) + ' \u03c4 ' + s.tau.toFixed(1)
+      : 'none selected</b> \u2014 agents have no site to reason about') + '</div>' +
+    '<div>SCAN&nbsp;&nbsp;<b>' + (slot ? escapeHtml(slot.name) + '</b> \u00b7 ' + fmtInt(slot.kept) + ' pts \u00b7 covariance ' +
+        (slot.cov ? 'yes' : 'no') + ' \u00b7 1 unit = ' + metresPerUnit + ' m'
+      : 'slot ' + activeSlot + ' empty</b>') + '</div>' +
+    '<div>GEO&nbsp;&nbsp;&nbsp;<b>' + (g ? (g.planes || []).length + ' planes</b> \u00b7 debris ' +
+        (g.debris ? fmtNum(mVol(g.debris.totalVolume)) + ' m\u00b3' : 'n/a') +
+        ' \u00b7 residual ' + ((g.residualFrac || 0) * 100).toFixed(1) + '%'
+      : 'not extracted</b> \u2014 press g to give the agents evidence') + '</div>' +
+    '<div style="margin-top:6px;color:var(--dim)">payload ' + fmtInt(chars) + ' chars</div>';
+
+  var html = '';
+  for (var i = 0; i < SWARM_AGENTS.length; i++){
+    var a = SWARM_AGENTS[i], pr = proposals[a.key], has = !!pr;
+    html +=
+      '<div class="sagent">' +
+        '<div class="top">' +
+          '<span class="nm">' + a.name + '</span>' +
+          '<span class="chip">\u2192 ' + a.label + '</span>' +
+          '<span class="chip' + (has ? ' filled' : '') + '">' + (has ? 'PROPOSED' : 'NO PROPOSAL') + '</span>' +
+        '</div>' +
+        '<div class="q">operator value now: <b>' + escapeHtml(paramText(s, a.param)) + '</b></div>' +
+        '<div class="rd">EVIDENCE \u00b7 ' + a.evidence + '</div>' +
+        '<div class="rd">VERIFIER \u00b7 ' + a.verifier + '</div>' +
+        '<div class="sverdict' + (has ? ' filled' : '') + '">' +
+          (has ? escapeHtml(String(pr.rationale || 'no rationale given')) +
+                 '\n\nproposes: ' + escapeHtml(paramText({ n:pr.value, r:pr.value, tau:pr.value,
+                                                            type:pr.value, conf:pr.value }, a.param))
+               : 'no proposal \u2014 no reasoner is attached in this build') +
+        '</div>' +
+        '<button class="btn sbtn" data-apply="' + a.key + '"' + ((has && s) ? '' : ' disabled') +
+          '>APPLY TO SLIDER</button>' +
+      '</div>';
+  }
+  swarmAgentsEl.innerHTML = html;
+
+  if (!overrideLog.length){
+    swarmLogEl.innerHTML = '<div class="gempty">No overrides yet. Applying a proposal records what it replaced.</div>';
+  } else {
+    var log = '';
+    for (var k = overrideLog.length - 1; k >= 0; k--){
+      var e = overrideLog[k];
+      log += '<div class="grow deb"><div class="top"><span class="nm">' +
+             e.at.toTimeString().slice(0, 8) + ' \u00b7 ' + e.agent + '</span></div>' +
+             '<div class="meta">' + escapeHtml(e.label) + ' \u00b7 ' + escapeHtml(e.from) +
+             ' \u2192 ' + escapeHtml(e.to) + ' \u00b7 operator applied</div></div>';
+    }
+    swarmLogEl.innerHTML = log;
+  }
+}
+
+function applyProposal(key){
+  var a = agentByKey(key), pr = proposals[key], s = getSite(selected);
+  if (!a || !pr || !s) return;
+  var from = paramText(s, a.param);
+  edit(function(site){ site[a.param] = pr.value; });
+  var after = getSite(selected);
+  overrideLog.push({ at:new Date(), agent:a.name, label:a.label, from:from, to:paramText(after, a.param) });
+  setStatus(a.name + ' proposal applied to ' + s.name + ' \u2014 override logged');
+  renderSwarm();
+}
+
+swarmAgentsEl.addEventListener('click', function(e){
+  var b = e.target.closest('button[data-apply]');
+  if (b && !b.disabled) applyProposal(b.getAttribute('data-apply'));
+});
+
+/* Clipboard is blocked on some file:// origins, so fall back to a hidden textarea. */
+function copyText(t, ok, bad){
+  function fallback(){
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.position = 'fixed'; ta.style.top = '-2000px';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      var done = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (done) ok(); else bad();
+    } catch (err){ bad(); }
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(ok, fallback);
+  } else fallback();
+}
+
+$('#btn-swarm-copy').addEventListener('click', function(){
+  var t = JSON.stringify(swarmContext(), null, 2);
+  copyText(t, function(){ setStatus('agent context copied \u2014 ' + fmtInt(t.length) + ' chars'); },
+              function(){ setStatus('clipboard refused \u2014 the payload is on the console instead'); console.log(t); });
+});
+
+$('#btn-swarm-clear').addEventListener('click', function(){
+  proposals = {};
+  renderSwarm();
+  setStatus('proposals cleared \u2014 the override log is kept');
+});
+
+/* Re-render on entry rather than hooking showTab, which the geometry pass also touches. */
+document.querySelector('#tabs').addEventListener('click', function(e){
+  var b = e.target.closest('button');
+  if (b && b.getAttribute('data-tab') === 'swarm') renderSwarm();
+});
+
+/* The seam a reasoner plugs into. Deliberately the whole public surface. */
+window.RubbleSwarm = {
+  agents: SWARM_AGENTS,
+  context: swarmContext,
+  propose: function(key, value, rationale){
+    var a = agentByKey(key);
+    if (!a) throw new Error('no such agent "' + key + '" \u2014 try one of: ' +
+                            SWARM_AGENTS.map(function(x){ return x.key; }).join(', '));
+    var v = coerce(a.param, value);
+    if (v === null) throw new Error('value ' + JSON.stringify(value) + ' is not valid for ' + a.label);
+    proposals[key] = { value:v, rationale:rationale || '', at:new Date() };
+    renderSwarm();
+    return v;
+  },
+  clear: function(){ proposals = {}; renderSwarm(); },
+  log: function(){ return overrideLog.slice(); }
+};
+
+renderSwarm();
+
+/* =====================================================================
+   13. KEYBOARD
+   ===================================================================== */
+window.addEventListener('keydown', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')){
+    if (e.key === 'Escape') t.blur();
+    return;
+  }
+  if (e.key === 'm' || e.key === 'M'){ setMark(!markMode); }
+  else if (e.key === 'Escape'){ if (markMode){ setMark(false); setStatus('marking cancelled'); } }
+  else if (e.key === 'f' || e.key === 'F'){ flipActive(); }
+  else if (e.key === 'g' || e.key === 'G'){ runGeometry(); }
+});
+
+/* =====================================================================
+   14. RENDER LOOP + BOOT
+   ===================================================================== */
+function tick(){
+  requestAnimationFrame(tick);
+  if (flyGoal){
+    orbit.target.lerp(flyGoal, 0.18);
+    if (orbit.target.distanceTo(flyGoal) < orbit.radius * 0.001) flyGoal = null;
+  }
+  applyOrbit();
+  updateMarkers();
+  renderer.render(scene, camera);
+}
+
+resize();
+setActiveSlot('A');
+renderQueue();
+syncAssess();
+setStatus('ready — LOAD .PLY (or drop one here), or click SYNTHETIC SCENE');
+tick();
+
+// Auto-build the synthetic field so the app is never a blank screen on open.
+setTimeout(function(){
+  if (!slots.A && !slots.B){
+    try {
+      installCloud(makeSynthetic(), 'synthetic rubble field', 0, true);
+      setStatus('synthetic rubble field loaded — press m and click a structure to place the first site');
+    } catch (err){ console.error(err); }
+  }
+}, 60);
+
+})();
+</script>
+</body>
+</html>
