@@ -10,3 +10,5 @@ src/core/geometry/extract.ts
 src/core/ply/parse.ts
 src/core/orientation.ts
 src/core/synthetic.ts
+.vercel
+api/swarm/*.js
