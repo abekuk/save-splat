@@ -4,21 +4,11 @@
 
 **save-splat** is an _engineer-in-the-loop_, AI-assisted **post-disaster triage viewer** built for the people standing in front of a collapsed building. It loads a Scaniverse/Polycam gaussian-splat `.ply`, extracts measurable structural facts from it — wall verticality, slab and lean-to angles, debris volume — and ranks assessment sites by **expected lives saved per crew-hour**. For urban search-and-rescue (USAR) crews it turns "that wall looks bad" into a drift number you can act on; for incident command it replaces gut-feel triage with a defensible, logged, reproducible prior. It reads the rubble so the crew can decide where to dig — and it never pretends to be the one making the call.
 
-## Demo
+## Demo Images
 
-```bash
-npm install
-npm run dev        # http://localhost:5173 → click "View demo"
-```
-
-A synthetic rubble field auto-loads, so the app runs with **no API key and no `.ply` file**. Press `m` and click a structure to place the first site.
-
-<!-- Drop screenshots / a gallery here:
-<div style="display: flex; flex-wrap: wrap; gap: 10px;">
-  <img src="docs/img/viewer.png" width="48%" />
-  <img src="docs/img/geo-panel.png" width="48%" />
-</div>
--->
+<img width="600" height="300" alt="image" src="https://github.com/user-attachments/assets/6f97cab7-1e44-46be-8734-a54d1363d40f" />
+<img width="600" height="300" alt="image" src="https://github.com/user-attachments/assets/63403229-23e3-46d3-856f-51857aaf6234" />
+<img width="600" height="300" alt="image" src="https://github.com/user-attachments/assets/07a5dd6b-5d92-4e97-abfd-b89f8c11db5f" />
 
 ## What it Does
 
