@@ -1,0 +1,10 @@
+# Stripe Projects — credentials, never commit
+.env
+.env.*
+!.env.example
+.projects/state.local.json
+.projects/vault/
+
+# node
+node_modules/
+.DS_Store
