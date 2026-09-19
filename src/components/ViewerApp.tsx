@@ -94,12 +94,15 @@ export default function ViewerApp({
       const mesh = isMeshFile(file.name);
       void (mesh ? loadMeshFile : loadPlyFile)(file, {
         onProgress: (p) => setState({ loading: p }),
-        onDone: (res) => {
+        onDone: (res, _info, root) => {
           // Background shells sit two orders of magnitude outside the scene and would set
           // both the camera framing and every scale-relative tolerance in the extractor.
           const trimmed = trimFarField(res);
           try {
-            v.installCloud(trimmed.res, file.name, null);
+            // A glTF hands back both: the textured mesh to render, and a cloud sampled
+            // evenly over its surface for the extractor. A .ply has only the cloud.
+            if (root) v.installMesh(root, res, file.name, null);
+            else v.installCloud(trimmed.res, file.name, null);
           } catch (err) {
             console.error(err);
             setState({ loading: null });

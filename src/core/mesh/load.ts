@@ -82,7 +82,32 @@ function collectSources(scene: THREE.Object3D): { sources: SampledSource[]; tria
   return { sources, triangles };
 }
 
-export function parseGltf(buf: ArrayBuffer): Promise<{ res: PlyResult; triangles: number }> {
+/** Make the glTF renderable in a scene that has no lights.
+ *
+ *  The viewer was built for point clouds and unlit markers, so nothing lights a
+ *  MeshStandardMaterial and it renders solid black. Unlit is also the correct choice for
+ *  photogrammetry: the texture already carries the real lighting, and relighting doubles it
+ *  up. Double-sided because scan meshes routinely have inconsistent winding, and a
+ *  single-sided material punches holes wherever a triangle faces away. */
+function makeUnlit(root: THREE.Object3D): void {
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!(mesh as { isMesh?: boolean }).isMesh || !mesh.material) return;
+    const src = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as
+      THREE.MeshStandardMaterial;
+    const flat = new THREE.MeshBasicMaterial({
+      map: src.map ?? null,
+      side: THREE.DoubleSide,
+      vertexColors: !!mesh.geometry.getAttribute('color'),
+    });
+    if (!flat.map && !flat.vertexColors) flat.color.setHex(0x9aa0a6);
+    mesh.material = flat;
+  });
+}
+
+export function parseGltf(
+  buf: ArrayBuffer,
+): Promise<{ res: PlyResult; triangles: number; root: THREE.Object3D }> {
   return new Promise((resolve, reject) => {
     const blocked = unsupportedExtension(buf);
     if (blocked) {
@@ -109,7 +134,8 @@ export function parseGltf(buf: ArrayBuffer): Promise<{ res: PlyResult; triangles
             MAX_POINTS,
             Math.max(MIN_POINTS, Math.round(triangles * PER_TRIANGLE)),
           );
-          resolve({ res: samplePoints(sources, target), triangles });
+          makeUnlit(gltf.scene);
+          resolve({ res: samplePoints(sources, target), triangles, root: gltf.scene });
         } catch (err) {
           reject(err instanceof Error ? err : new Error(String(err)));
         }
@@ -140,7 +166,7 @@ export async function loadMeshFile(file: File, cb: LoadCallbacks): Promise<void>
   cb.onProgress({ phase: 'parsing', frac: 0.93, message: 'reading the mesh …' });
   await new Promise<void>((r) => afterPaint(r));
 
-  let out: { res: PlyResult; triangles: number };
+  let out: { res: PlyResult; triangles: number; root: THREE.Object3D };
   try {
     out = await parseGltf(buf);
   } catch (err) {
@@ -161,5 +187,5 @@ export async function loadMeshFile(file: File, cb: LoadCallbacks): Promise<void>
     splat: false,
     dc: false,
   };
-  cb.onDone(out.res, info);
+  cb.onDone(out.res, info, out.root);
 }

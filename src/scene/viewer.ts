@@ -11,10 +11,7 @@
 import * as THREE from 'three';
 import { clamp, fmtInt } from '@/core/util';
 import { ORIENTS, detectOrientation } from '@/core/orientation';
-import { robustExtent } from '@/core/cloud/trim';
-
-/** Points are drawn this much larger for a capture, so surfaces read as surfaces. */
-const CAPTURE_POINT_SCALE = 3.5;
+import { estimateGround } from '@/core/geometry/level';
 import type { OrientationDetection } from '@/core/orientation';
 import { CLS_CSS, CLS_HEX } from '@/core/geometry/extract';
 import type { ExtractInput } from '@/core/geometry/extract';
@@ -31,7 +28,15 @@ export interface ViewerCallbacks {
 }
 
 interface SlotInternal {
-  obj: THREE.Points;
+  /** THREE.Points for a cloud, a glTF scene graph for a mesh */
+  obj: THREE.Object3D;
+  kind: 'points' | 'mesh';
+  /** every vertex, flattened xyz, in the object's local space. The geometry pass reads
+   *  this rather than reaching into a geometry attribute, so a mesh and a cloud are
+   *  interchangeable to it. */
+  positions: Float32Array;
+  /** local-space bounding centre, so framing does not depend on the object's shape */
+  center: THREE.Vector3;
   name: string;
   kept: number;
   total: number;
@@ -41,8 +46,6 @@ interface SlotInternal {
   alphas: Float32Array | null;
   cov: Float32Array | null;
   radius: number;
-  /** median centre, in the cloud's own frame — robust, unlike a bounding-sphere centre */
-  centre: [number, number, number];
   geom: GeometryResult | null;
 }
 
@@ -51,12 +54,18 @@ interface MarkerHandle {
   el: HTMLDivElement;
 }
 
+/** Point clouds are fattened by this factor for vision captures only, so surfaces read as
+ *  surfaces rather than a haze of dots. Textured meshes are captured as-is. */
+const CAPTURE_POINT_SCALE = 3.5;
+
 export function createViewer(
   canvas: HTMLCanvasElement,
   view: HTMLElement,
   labelLayer: HTMLElement,
   cb: ViewerCallbacks,
 ) {
+  // preserveDrawingBuffer: captureViews reads the canvas back after a render; without it
+  // toDataURL returns a blank frame on most browsers
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: false,
@@ -219,8 +228,19 @@ export function createViewer(
 
   /* ---------------- marker placement ---------------- */
 
-  function visibleClouds(): THREE.Points[] {
-    const out: THREE.Points[] = [];
+  /** Dispose a whole subtree — a glTF scene is not one geometry and one material. */
+  function disposeObject(root: THREE.Object3D): void {
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material;
+      if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+      else mat?.dispose();
+    });
+  }
+
+  function visibleClouds(): THREE.Object3D[] {
+    const out: THREE.Object3D[] = [];
     (Object.keys(slots) as SlotKey[]).forEach((k) => {
       const s = slots[k];
       if (s && s.obj.visible) out.push(s.obj);
@@ -393,6 +413,12 @@ export function createViewer(
           opacity: 0.07 + 0.2 * p.fill,
           side: THREE.DoubleSide,
           depthWrite: false,
+          // A fitted plane sits exactly on the surface it was fitted to. Against a point
+          // cloud that is invisible; against a mesh the two are coplanar and z-fight into
+          // a mottled mess, so nudge the overlay towards the camera.
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
         }),
       );
       mesh.renderOrder = 4;
@@ -464,6 +490,60 @@ export function createViewer(
 
   /* ---------------- slots ---------------- */
 
+  /** Size points so they very nearly touch, instead of using a fixed fraction of the scene.
+   *
+   *  A scan is a surface, so N points over a patch of side ~2r sit roughly 2r/sqrt(N) apart.
+   *  Drawing them smaller than that leaves the gaps you see when you zoom in; drawing them at
+   *  about that spacing reads as a continuous surface. The fixed 0.0035·r this replaced was
+   *  tuned against one scene and went sparse on any cloud with fewer points. */
+  function pointSizeFor(radius: number, count: number): number {
+    const spacing = (2 * radius) / Math.sqrt(Math.max(1, count));
+    return clamp(spacing * 1.15, radius * 0.0012, radius * 0.03);
+  }
+
+  /* Bounds that ignore floaters.
+   *
+   * A real 3DGS scene carries stray gaussians flung far from the subject — background,
+   * sky, reconstruction noise. A true bounding sphere is sized by the worst of them, and
+   * everything downstream is scale-relative: framing puts the subject in a corner, point
+   * size collapses, and the geometry pass derives its plane tolerance from a radius that
+   * is mostly empty space. Taking a high percentile of the distance from the centroid
+   * gives the size of the thing you actually scanned. */
+  function robustBounds(positions: Float32Array): { center: THREE.Vector3; radius: number } {
+    const n = Math.floor(positions.length / 3);
+    const center = new THREE.Vector3();
+    if (!n) return { center, radius: 10 };
+
+    // stride-sample so a huge cloud costs the same as a small one
+    const step = Math.max(1, Math.floor(n / 50000));
+    let cx = 0,
+      cy = 0,
+      cz = 0,
+      count = 0;
+    for (let i = 0; i < n; i += step) {
+      cx += positions[i * 3];
+      cy += positions[i * 3 + 1];
+      cz += positions[i * 3 + 2];
+      count++;
+    }
+    cx /= count;
+    cy /= count;
+    cz /= count;
+
+    const d: number[] = [];
+    for (let i = 0; i < n; i += step) {
+      const dx = positions[i * 3] - cx;
+      const dy = positions[i * 3 + 1] - cy;
+      const dz = positions[i * 3 + 2] - cz;
+      d.push(Math.sqrt(dx * dx + dy * dy + dz * dz));
+    }
+    d.sort((a, b) => a - b);
+    // 95th percentile: keeps the subject, drops the tail of floaters
+    const r = d[Math.min(d.length - 1, Math.floor(d.length * 0.95))] || 10;
+    center.set(cx, cy, cz);
+    return { center, radius: r > 0 ? r : 10 };
+  }
+
   function targetSlot(): SlotKey {
     // The boot-time synthetic field is provisional: the first real load replaces it, so a
     // user's first .ply lands in A rather than being pushed into B by the safety net.
@@ -492,7 +572,7 @@ export function createViewer(
   function frameSlot(key: SlotKey): void {
     const s = slots[key];
     if (!s) return;
-    const c = new THREE.Vector3(s.centre[0], s.centre[1], s.centre[2]);
+    const c = s.center.clone();
     s.obj.updateMatrixWorld();
     c.applyMatrix4(s.obj.matrixWorld);
     const rad = isFinite(s.radius) && s.radius > 0 ? s.radius : 10;
@@ -517,22 +597,18 @@ export function createViewer(
     const outgoing = slots[key];
     if (outgoing) {
       scene.remove(outgoing.obj);
-      outgoing.obj.geometry.dispose();
-      (outgoing.obj.material as THREE.Material).dispose();
+      disposeObject(outgoing.obj);
     }
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(res.positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(res.colors, 3));
-    geo.computeBoundingSphere();
-    /* Not the bounding sphere: one far-field Gaussian would set the point size, the camera
-       framing and every scale-relative tolerance in the extractor. The scene is where the
-       material is, so the extent comes from a percentile. */
-    const ext = robustExtent(res.positions);
-    const rad = isFinite(ext.radius) && ext.radius > 0 ? ext.radius : 10;
+    geo.computeBoundingSphere(); // still needed for three's frustum culling
+    const rb = robustBounds(res.positions);
+    const rad = rb.radius;
 
     const mat = new THREE.PointsMaterial({
-      size: Math.max(0.004, rad * 0.0035),
+      size: pointSizeFor(rad, res.kept),
       vertexColors: true,
       sizeAttenuation: true,
     });
@@ -540,15 +616,32 @@ export function createViewer(
 
     let det: OrientationDetection | null = null;
     let idx = orient;
+    let levelled: number | null = null;
     if (idx == null) {
       det = detectOrientation(res.positions);
       idx = det.index;
     }
     pts.rotation.x = ORIENTS[idx].rx;
+
+    /* When no axis convention fits, the scan has no convention to find — a COLMAP-derived
+       3DGS scene is at an arbitrary rotation and no axis flip will make its floor level.
+       Everything measured here is defined against up, so fall back to estimating the ground
+       plane and rotating that onto +Y. */
+    if (det && !det.confident) {
+      const ground = estimateGround(res.positions);
+      if (ground && ground.support >= 0.06) {
+        const from = new THREE.Vector3(...ground.normal).normalize();
+        pts.quaternion.setFromUnitVectors(from, new THREE.Vector3(0, 1, 0));
+        levelled = ground.support;
+      }
+    }
     scene.add(pts);
 
     slots[key] = {
       obj: pts,
+      kind: 'points',
+      positions: res.positions,
+      center: rb.center,
       name,
       kept: res.kept,
       total: res.total,
@@ -558,7 +651,6 @@ export function createViewer(
       alphas: res.alphas ?? null,
       cov: res.cov ?? null,
       radius: rad,
-      centre: ext.centre,
       geom: null,
     };
     activeSlot = key;
@@ -568,11 +660,72 @@ export function createViewer(
     cb.onStatus(
       `${name} → slot ${key} · ${fmtInt(res.kept)} / ${fmtInt(res.total)} pts · 1:${res.step} sampling · ` +
         `${fmtInt(res.culled)} culled · colour ${res.colorSource}` +
+        (levelled != null
+          ? ` · levelled onto its largest flat surface (${Math.round(levelled * 100)}% of points) — press f to override`
+          : det
+            ? ` · up-axis ${ORIENTS[idx].name}` +
+              (det.confident
+                ? ` (detected, floor holds ${Math.round(det.score * 100)}% of points)`
+                : ' (UNCERTAIN — press f if this looks wrong)')
+            : ''),
+    );
+  }
+
+  /** Install a glTF scene graph. Mirrors installCloud: same slot rules, same orientation
+   *  detection (run on the mesh's own vertices), same framing. */
+  function installMesh(
+    root: THREE.Object3D,
+    res: PlyResult,
+    name: string,
+    orient: number | null,
+  ): void {
+    const positions = res.positions;
+    const key = targetSlot();
+    const outgoing = slots[key];
+    if (outgoing) {
+      scene.remove(outgoing.obj);
+      disposeObject(outgoing.obj);
+    }
+
+    const box = new THREE.Box3().setFromObject(root);
+    const sphere = box.getBoundingSphere(new THREE.Sphere());
+    const rad = isFinite(sphere.radius) && sphere.radius > 0 ? sphere.radius : 10;
+
+    let det: OrientationDetection | null = null;
+    let idx = orient;
+    if (idx == null) {
+      det = detectOrientation(positions);
+      idx = det.index;
+    }
+    root.rotation.x = ORIENTS[idx].rx;
+    scene.add(root);
+
+    slots[key] = {
+      obj: root,
+      kind: 'mesh',
+      positions,
+      center: sphere.center.clone(),
+      name,
+      kept: res.kept,
+      total: res.total,
+      orient: idx,
+      auto: false,
+      detected: det,
+      alphas: null,
+      cov: null,
+      radius: rad,
+      geom: null,
+    };
+    activeSlot = key;
+    setActiveSlot(key);
+    frameSlot(key);
+
+    cb.onStatus(
+      `${name} → slot ${key} · textured mesh · ${fmtInt(res.kept)} points sampled over its surface` +
+        ` · colour ${res.colorSource}` +
         (det
           ? ` · up-axis ${ORIENTS[idx].name}` +
-            (det.confident
-              ? ` (detected, floor holds ${Math.round(det.score * 100)}% of points)`
-              : ' (UNCERTAIN — press f if this looks wrong)')
+            (det.confident ? '' : ' (UNCERTAIN — press f if this looks wrong)')
           : ''),
     );
   }
@@ -585,6 +738,8 @@ export function createViewer(
       return null;
     }
     s.orient = (s.orient + 1) % ORIENTS.length;
+    // drop any auto-levelling: the operator is taking over
+    s.obj.quaternion.identity();
     s.obj.rotation.x = ORIENTS[s.orient].rx;
     // Markers hold their world positions; reorienting moves the cloud under them by design.
     let cleared = false;
@@ -603,8 +758,7 @@ export function createViewer(
     const s = slots[k];
     if (!s) return null;
     return {
-      // this branch samples glTF surfaces into points, so every slot renders as points
-      kind: 'points',
+      kind: s.kind,
       name: s.name,
       kept: s.kept,
       total: s.total,
@@ -622,7 +776,7 @@ export function createViewer(
     if (!s) return null;
     s.obj.updateMatrixWorld();
     return {
-      positions: s.obj.geometry.attributes.position.array as Float32Array,
+      positions: s.positions,
       alphas: s.alphas,
       cov: s.cov,
       matrixWorld: s.obj.matrixWorld.elements,
@@ -657,8 +811,9 @@ export function createViewer(
   /* Views for a vision model. It orbits a ring around the scene, renders each angle and
      hands back JPEGs, then puts the camera back exactly where it was — an operator should
      not find their view moved because an agent looked at something.
-     Plane overlays and markers are hidden for the capture: the model should read the scan,
-     not this app's annotations drawn on top of it. */
+     Plane overlays and labels are hidden for the capture: the model should read the scan,
+     not this app's annotations drawn on top of it. Point slots are fattened so the model
+     does not mistake a sparse render for a sparse scan; mesh slots already read as surfaces. */
   function captureViews(count = 4, quality = 0.8): string[] {
     const shots: string[] = [];
     const saved = {
@@ -672,20 +827,16 @@ export function createViewer(
       showPlanes = false;
       refreshOverlay();
     }
-    /* A point cloud drawn at screen-accurate size is a haze of dots, and a vision model
-       reads that as "too sparse" and abstains — which is a true statement about the render
-       and a false one about the scan. Fattening the points for the capture makes surfaces
-       read as surfaces, which is what the model needs to judge a crack from a hole. */
-    const sizes = new Map<THREE.Points, number>();
+    const sizes = new Map<THREE.PointsMaterial, number>();
     for (const k of Object.keys(slots) as SlotKey[]) {
       const sl = slots[k];
-      if (!sl || !sl.obj.visible) continue;
-      const mat = sl.obj.material as THREE.PointsMaterial;
-      sizes.set(sl.obj, mat.size);
+      if (!sl || sl.kind !== 'points' || !sl.obj.visible) continue;
+      const mat = (sl.obj as THREE.Points).material as THREE.PointsMaterial;
+      sizes.set(mat, mat.size);
       mat.size = mat.size * CAPTURE_POINT_SCALE;
     }
-    const labels = labelLayer ? (labelLayer.style.visibility ?? '') : '';
-    if (labelLayer) labelLayer.style.visibility = 'hidden';
+    const labels = labelLayer.style.visibility ?? '';
+    labelLayer.style.visibility = 'hidden';
     try {
       for (let i = 0; i < count; i++) {
         orbit.theta = saved.theta + (i / count) * Math.PI * 2;
@@ -700,8 +851,8 @@ export function createViewer(
       orbit.radius = saved.radius;
       orbit.target.copy(saved.target);
       applyOrbit();
-      for (const [obj, size] of sizes) (obj.material as THREE.PointsMaterial).size = size;
-      if (labelLayer) labelLayer.style.visibility = labels;
+      for (const [mat, size] of sizes) mat.size = size;
+      labelLayer.style.visibility = labels;
       if (hadPlanes) {
         showPlanes = true;
         refreshOverlay();
@@ -716,6 +867,7 @@ export function createViewer(
     resetView,
     captureViews,
     installCloud,
+    installMesh,
     setActiveSlot,
     frameSlot,
     cycleOrientation,
