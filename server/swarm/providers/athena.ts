@@ -29,7 +29,7 @@ const VALUE_SHAPE: Record<AgentParam, string> = {
   conf: 'one of "low" | "med" | "high", or null when abstaining',
 };
 
-export function buildAthenaPrompt(req: ReasonerRequest): string {
+export function buildAthenaPrompt(req: ReasonerRequest & { param: AgentParam }): string {
   return [
     req.system,
     '',
@@ -70,9 +70,20 @@ export class AthenaReasoner implements Reasoner {
   }
 
   async complete(req: ReasonerRequest): Promise<ReasonerResponse> {
+    if (req.images?.length) {
+      throw new ProviderError(
+        'Athena cannot look at images — the room assessment needs ANTHROPIC_API_KEY or OPENAI_API_KEY',
+      );
+    }
+    if (!req.param) {
+      throw new ProviderError('Athena answers the per-parameter agent prompts only');
+    }
     let text: string;
     try {
-      ({ text } = await askAthena(buildAthenaPrompt(req), AGENT_TIMEOUT_MS));
+      ({ text } = await askAthena(
+        buildAthenaPrompt(req as ReasonerRequest & { param: AgentParam }),
+        AGENT_TIMEOUT_MS,
+      ));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new ProviderError(

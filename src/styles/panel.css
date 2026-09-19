@@ -892,6 +892,76 @@ input[type='range'] {
   content: '▾ ';
 }
 
+/* The answer, before the numbers that produced it. */
+.verdict {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--dim);
+  background: var(--panel2);
+  border-radius: 3px;
+  padding: 11px 12px;
+  margin-bottom: 12px;
+}
+.v-level {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  margin-bottom: 5px;
+}
+.v-head {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-bottom: 5px;
+}
+.v-detail {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+.wline {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 9px;
+  margin-bottom: 4px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--panel2);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--fg);
+}
+.wline:hover {
+  border-color: var(--line-strong);
+}
+.wline i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.wline .lbl {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  min-width: 26px;
+}
+.wline .say {
+  flex: 1;
+}
+.wline .num {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.vfact {
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 2px 0 10px;
+}
+
 /* ---------- GEO verdict ----------
    The panel led with eight numeric tiles, which buries the one thing an operator needs to
    read at a glance. This is that thing; the numbers move behind a toggle. */

@@ -9,10 +9,10 @@ import { DEFAULTS } from '@/core/ranking';
 import type { LoadProgress } from '@/core/ply/load';
 import type { OverrideEntry, Proposal } from '@/core/swarm/agents';
 import type { SwarmRunResult } from '@/core/swarm/proposal';
-import type { ReviewResult, SwarmStatus } from '@/core/swarm/client';
+import type { ReviewResult, RoomRunResult, SwarmStatus } from '@/core/swarm/client';
 import type { GeoStage, Site, Vec3 } from '@/types';
 
-export type TabKey = 'queue' | 'assess' | 'geo' | 'swarm' | 'model';
+export type TabKey = 'assess' | 'geo' | 'swarm' | 'model';
 
 export interface AppState {
   sites: Site[];
@@ -32,6 +32,8 @@ export interface AppState {
   /** last swarm run, plus the operator notes that fed it and whether a reasoner is reachable */
   swarm: {
     run: SwarmRunResult | null;
+    vision: RoomRunResult | null;
+    visionBusy: boolean;
     busy: boolean;
     notes: string;
     status: SwarmStatus | null;
@@ -50,7 +52,7 @@ let state: AppState = {
   sites: [],
   selectedId: null,
   selectedPlane: -1,
-  tab: 'queue',
+  tab: 'swarm',
   status: 'ready — LOAD .PLY (or drop one here), or click SYNTHETIC SCENE',
   hint: '',
   metresPerUnit: 1,
@@ -63,6 +65,8 @@ let state: AppState = {
   proposals: {},
   swarm: {
     run: null,
+    vision: null,
+    visionBusy: false,
     busy: false,
     notes: '',
     status: null,

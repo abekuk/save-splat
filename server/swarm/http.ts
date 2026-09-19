@@ -7,10 +7,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { reviewRun } from './athena';
 import { athenaConfig } from './env';
 import { runSwarm } from './handler';
+import { runRoom } from './room';
 import { persistEnabled, recordRun } from './persist';
 import { detectProvider, getReasoner } from './providers';
 
-const MAX_BODY = 4 * 1024 * 1024; // a context payload with many planes is still small
+const MAX_BODY = 24 * 1024 * 1024; // six rendered JPEG views are the large case, not the JSON
 
 /** Vercel parses JSON bodies before the handler runs; Vite hands us the raw stream. */
 export type Req = IncomingMessage & { body?: unknown };
@@ -163,6 +164,38 @@ export async function handleRun(req: Req, res: ServerResponse): Promise<void> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // a missing key is the operator's problem to fix, not a server fault
+    json(res, /API_KEY|No API key/.test(message) ? 503 : 500, { error: message });
+  }
+}
+
+/** POST /api/swarm/room — rendered views in, a defect report out. One vision call. */
+export async function handleRoom(req: Req, res: ServerResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    json(res, 405, { error: 'POST only' });
+    return;
+  }
+  try {
+    let body: Record<string, unknown>;
+    try {
+      const parsed = await bodyOf(req);
+      if (!parsed || typeof parsed !== 'object') throw new Error('not an object');
+      body = parsed as Record<string, unknown>;
+    } catch {
+      json(res, 400, { error: 'request body was not valid JSON' });
+      return;
+    }
+    if (!Array.isArray(body.images) || body.images.length === 0) {
+      json(res, 400, { error: 'missing "images"' });
+      return;
+    }
+    const result = await runRoom({
+      images: body.images as string[],
+      geometryNote: typeof body.geometryNote === 'string' ? body.geometryNote : null,
+      operatorNote: typeof body.operatorNote === 'string' ? body.operatorNote : null,
+    });
+    json(res, 200, result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     json(res, /API_KEY|No API key/.test(message) ? 503 : 500, { error: message });
   }
 }

@@ -19,7 +19,10 @@ export const KEY_ENV: Record<ProviderName, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
 };
 
-const ORDER: ProviderName[] = ['athena', 'openrouter', 'openai', 'anthropic'];
+// Auto-detection order. Model APIs first because the room assessment sends images and
+// Athena cannot look at them; Athena is the last-resort reasoner and always the reviewer.
+// OpenRouter is pin-only (SWARM_PROVIDER=openrouter): the free-plan key was too slow.
+const ORDER: ProviderName[] = ['anthropic', 'openai', 'athena'];
 
 export class MissingKeyError extends Error {
   constructor(message: string) {

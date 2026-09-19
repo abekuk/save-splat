@@ -54,13 +54,23 @@ interface MarkerHandle {
   el: HTMLDivElement;
 }
 
+/** Point clouds are fattened by this factor for vision captures only, so surfaces read as
+ *  surfaces rather than a haze of dots. Textured meshes are captured as-is. */
+const CAPTURE_POINT_SCALE = 3.5;
+
 export function createViewer(
   canvas: HTMLCanvasElement,
   view: HTMLElement,
   labelLayer: HTMLElement,
   cb: ViewerCallbacks,
 ) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+  // preserveDrawingBuffer: captureViews reads the canvas back after a render; without it
+  // toDataURL returns a blank frame on most browsers
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false,
+    preserveDrawingBuffer: true,
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
 
@@ -506,14 +516,19 @@ export function createViewer(
 
     // stride-sample so a huge cloud costs the same as a small one
     const step = Math.max(1, Math.floor(n / 50000));
-    let cx = 0, cy = 0, cz = 0, count = 0;
+    let cx = 0,
+      cy = 0,
+      cz = 0,
+      count = 0;
     for (let i = 0; i < n; i += step) {
       cx += positions[i * 3];
       cy += positions[i * 3 + 1];
       cz += positions[i * 3 + 2];
       count++;
     }
-    cx /= count; cy /= count; cz /= count;
+    cx /= count;
+    cy /= count;
+    cz /= count;
 
     const d: number[] = [];
     for (let i = 0; i < n; i += step) {
@@ -793,9 +808,64 @@ export function createViewer(
   resize();
   tick();
 
+  /* Views for a vision model. It orbits a ring around the scene, renders each angle and
+     hands back JPEGs, then puts the camera back exactly where it was — an operator should
+     not find their view moved because an agent looked at something.
+     Plane overlays and labels are hidden for the capture: the model should read the scan,
+     not this app's annotations drawn on top of it. Point slots are fattened so the model
+     does not mistake a sparse render for a sparse scan; mesh slots already read as surfaces. */
+  function captureViews(count = 4, quality = 0.8): string[] {
+    const shots: string[] = [];
+    const saved = {
+      theta: orbit.theta,
+      phi: orbit.phi,
+      radius: orbit.radius,
+      target: orbit.target.clone(),
+    };
+    const hadPlanes = showPlanes;
+    if (hadPlanes) {
+      showPlanes = false;
+      refreshOverlay();
+    }
+    const sizes = new Map<THREE.PointsMaterial, number>();
+    for (const k of Object.keys(slots) as SlotKey[]) {
+      const sl = slots[k];
+      if (!sl || sl.kind !== 'points' || !sl.obj.visible) continue;
+      const mat = (sl.obj as THREE.Points).material as THREE.PointsMaterial;
+      sizes.set(mat, mat.size);
+      mat.size = mat.size * CAPTURE_POINT_SCALE;
+    }
+    const labels = labelLayer.style.visibility ?? '';
+    labelLayer.style.visibility = 'hidden';
+    try {
+      for (let i = 0; i < count; i++) {
+        orbit.theta = saved.theta + (i / count) * Math.PI * 2;
+        orbit.phi = 1.15;
+        applyOrbit();
+        renderer.render(scene, camera);
+        shots.push(renderer.domElement.toDataURL('image/jpeg', quality));
+      }
+    } finally {
+      orbit.theta = saved.theta;
+      orbit.phi = saved.phi;
+      orbit.radius = saved.radius;
+      orbit.target.copy(saved.target);
+      applyOrbit();
+      for (const [mat, size] of sizes) mat.size = size;
+      labelLayer.style.visibility = labels;
+      if (hadPlanes) {
+        showPlanes = true;
+        refreshOverlay();
+      }
+      renderer.render(scene, camera);
+    }
+    return shots;
+  }
+
   return {
     resize,
     resetView,
+    captureViews,
     installCloud,
     installMesh,
     setActiveSlot,

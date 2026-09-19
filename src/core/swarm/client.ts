@@ -56,6 +56,41 @@ export async function runSwarmRemote(args: RunSwarmArgs): Promise<SwarmRunResult
   return body as SwarmRunResult;
 }
 
+export interface RoomRunResult {
+  generated: string;
+  model: string;
+  views: number;
+  report: import('./defects').DefectReport | null;
+  verdicts: { check: string; status: 'pass' | 'fail' | 'unverified'; detail: string }[];
+  verified: boolean;
+  error?: string;
+  usage?: { input: number; output: number };
+  ms: number;
+}
+
+/** Hands rendered views to the defect agent. The key that reaches the model stays in Node. */
+export async function runRoomRemote(args: {
+  images: string[];
+  geometryNote?: string | null;
+  operatorNote?: string | null;
+}): Promise<RoomRunResult> {
+  const res = await fetch('/api/swarm/room', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new Error(`room endpoint returned non-JSON (${res.status}): ${text.slice(0, 200)}`);
+  }
+  if (!res.ok)
+    throw new Error((body as { error?: string }).error ?? `assessment failed (${res.status})`);
+  return body as RoomRunResult;
+}
+
 export interface ReviewResult {
   text: string;
   agent: string;

@@ -81,13 +81,26 @@ export class OpenAIReasoner implements Reasoner {
   async complete(req: ReasonerRequest): Promise<ReasonerResponse> {
     const model = await this.model();
     try {
+      const schema = (req.schema ?? wireSchemaFor(req.param!)) as Parameters<
+        typeof zodResponseFormat
+      >[0];
+      const parts: { type: 'text'; text: string }[] | unknown[] = req.images?.length
+        ? [
+            ...req.images.map((img) => ({
+              type: 'image_url' as const,
+              image_url: { url: `data:${img.mediaType};base64,${img.data}` },
+            })),
+            { type: 'text' as const, text: req.user },
+          ]
+        : [{ type: 'text' as const, text: req.user }];
+
       const completion = await this.client.chat.completions.parse({
         model,
         messages: [
           { role: 'system', content: req.system },
-          { role: 'user', content: req.user },
+          { role: 'user', content: parts as never },
         ],
-        response_format: zodResponseFormat(wireSchemaFor(req.param), 'proposal'),
+        response_format: zodResponseFormat(schema, 'proposal'),
       });
       const choice = completion.choices[0];
       if (choice?.message.refusal) {

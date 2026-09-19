@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- this is a reporting script; stdout is its output */
 /* Measures how much of each fitted plane's drawn rectangle is actually covered by material.
  * The overlay renders that rectangle, so a low coverage number is a plane painted across
  * empty space — which is the thing being fixed. */

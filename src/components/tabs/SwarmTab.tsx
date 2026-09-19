@@ -1,425 +1,214 @@
 import { useEffect } from 'react';
 import type { AppSnapshot } from '@/core/snapshot';
-import { SWARM_AGENTS, agentByKey, parseProposal } from '@/core/swarm/agents';
-import type { AgentParam, ProposalValue } from '@/core/swarm/agents';
-import { buildSwarmContext, copyText } from '@/core/swarm/context';
-import { requestReview, runSwarmRemote, swarmStatus } from '@/core/swarm/client';
-import type { AgentResult, Verdict } from '@/core/swarm/proposal';
-import { LAMBDA, TYPE_LABEL, rho } from '@/core/ranking';
-import { mVol } from '@/core/units';
-import { fmtInt, fmtNum } from '@/core/util';
-import { getState, setState, setStatus, updateSite, useAppState } from '@/state/store';
-import type { Site } from '@/types';
+import type { Viewer } from '@/scene/viewer';
+import { runRoomRemote, swarmStatus } from '@/core/swarm/client';
+import { buildCondition, CONDITION_CSS, CONDITION_WORD } from '@/core/swarm/condition';
+import { DEFECT_LABEL, STRUCTURAL_KINDS } from '@/core/swarm/defects';
+import { buildVerdict } from '@/core/geometry/verdict';
+import { getState, setState, setStatus, useAppState } from '@/state/store';
 
-/** Display form of a parameter as the operator currently has it. */
-function paramText(s: Partial<Site> | null, param: AgentParam): string {
-  if (!s) return '—';
-  if (param === 'type') {
-    const t = s.type;
-    return t ? `${TYPE_LABEL[t]} (λ ${LAMBDA[t].toFixed(3)})` : '—';
-  }
-  if (param === 'conf') return String(s.conf ?? '—').toUpperCase();
-  if (param === 'n') return String(s.n ?? '—');
-  if (param === 'tau') return s.tau != null ? s.tau.toFixed(1) : '—';
-  const v = s[param as 'r'];
-  return v != null ? Number(v).toFixed(2) : '—';
-}
-
-function proposalText(v: ProposalValue, param: AgentParam): string {
-  const shim: Partial<Site> = {};
-  if (param === 'type') shim.type = v as Site['type'];
-  else if (param === 'conf') shim.conf = v as Site['conf'];
-  else if (param === 'n') shim.n = v as number;
-  else if (param === 'tau') shim.tau = v as number;
-  else shim.r = v as number;
-  return paramText(shim, param);
-}
-
-const MARK: Record<Verdict['status'], string> = { pass: '✓', fail: '✗', unverified: '·' };
-const VCLASS: Record<Verdict['status'], string> = {
+const TONE: Record<string, string> = {
+  ok: 'var(--dim)',
+  warn: 'var(--r2)',
+  bad: 'var(--r1)',
+  dim: 'var(--dim)',
+};
+const SEV_CSS: Record<string, string> = {
+  slight: 'var(--dim)',
+  moderate: 'var(--r2)',
+  serious: 'var(--r1)',
+};
+const MARK: Record<string, string> = { pass: '✓', fail: '✗', unverified: '·' };
+const VCLASS: Record<string, string> = {
   pass: 'vline pass',
   fail: 'vline fail',
   unverified: 'vline unver',
 };
 
-export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
+/** Resolves once `test` holds, or gives up. Extraction is chunked across frames, so the
+ *  capture has to wait for it rather than photograph a half-fitted scene. */
+function waitFor(test: () => boolean, ms: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const t0 = Date.now();
+    const tick = (): void => {
+      if (test()) return resolve(true);
+      if (Date.now() - t0 > ms) return resolve(false);
+      window.setTimeout(tick, 120);
+    };
+    tick();
+  });
+}
+
+export default function SwarmTab({
+  viewer,
+  snap,
+  onGeometry,
+}: {
+  viewer: Viewer | null;
+  snap: AppSnapshot;
+  onGeometry: (focus?: boolean) => void;
+}) {
   const s = useAppState();
-  const site = s.sites.find((x) => x.id === s.selectedId) ?? null;
-  const ctx = buildSwarmContext(snap);
-  const chars = JSON.stringify(ctx).length;
-  const { run, busy, notes, status } = s.swarm;
+  const { notes, status, vision: room, visionBusy: busy } = s.swarm;
 
-  const byKey = new Map<string, AgentResult>((run?.results ?? []).map((r) => [r.key, r]));
+  const verdict = snap.geom ? buildVerdict(snap.geom.planes) : null;
+  const condition =
+    room || verdict
+      ? buildCondition(verdict?.level ?? 'unknown', verdict?.detail ?? '', room?.report ?? null)
+      : null;
 
-  /* Ask once whether a reasoner is reachable, so the button can say why it is disabled
-     instead of failing on the first click. */
   useEffect(() => {
     if (s.swarm.status) return;
     void swarmStatus().then((st) => setState((x) => ({ swarm: { ...x.swarm, status: st } })));
   }, [s.swarm.status]);
 
-  /* The seam a reasoner plugs into. Deliberately the whole public surface. */
-  useEffect(() => {
-    const api = {
-      agents: SWARM_AGENTS,
-      context: () => buildSwarmContext(snap),
-      propose(key: string, value: unknown, rationale?: string) {
-        const a = agentByKey(key);
-        if (!a) {
-          throw new Error(
-            `no such agent "${key}" — try one of: ${SWARM_AGENTS.map((x) => x.key).join(', ')}`,
-          );
-        }
-        const parsed = parseProposal(a.param, value);
-        if (!parsed.ok) {
-          throw new Error(`${a.label}: ${parsed.error} (received ${JSON.stringify(value)})`);
-        }
-        setState((st) => ({
-          proposals: {
-            ...st.proposals,
-            [key]: { value: parsed.value, rationale: rationale ?? '', at: new Date() },
-          },
-        }));
-        return parsed.value;
-      },
-      clear: () => setState({ proposals: {} }),
-      log: () => getState().overrideLog.slice(),
-    };
-    (window as unknown as { RubbleSwarm: typeof api }).RubbleSwarm = api;
-  }, [snap]);
+  /* One action: fit the planes if they are not fitted, render the room, read the surfaces. */
+  const capture = (): void => {
+    if (!viewer || busy) return;
+    setState((x) => ({ swarm: { ...x.swarm, visionBusy: true } }));
 
-  const apply = (key: string): void => {
-    const a = agentByKey(key);
-    const pr = s.proposals[key];
-    if (!a || !pr || !site) return;
-    const from = paramText(site, a.param);
-    updateSite(site.id, { [a.param]: pr.value } as Partial<Site>);
-    const to = proposalText(pr.value, a.param);
-    setState((st) => ({
-      overrideLog: [...st.overrideLog, { at: new Date(), agent: a.name, label: a.label, from, to }],
-    }));
-    setStatus(`${a.name} proposal applied to ${site.name} — override logged`);
-  };
+    void (async () => {
+      try {
+        if (!snap.geom) {
+          setStatus('measuring the room …');
+          onGeometry(false); // stay on this tab; the result lands here
+          const ok = await waitFor(() => {
+            const st = getState().geoStage;
+            return st === 'done' || st === 'failed';
+          }, 120000);
+          if (!ok || getState().geoStage === 'failed') {
+            setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
+            setStatus('could not measure the room');
+            return;
+          }
+        }
 
-  const runNow = (): void => {
-    if (busy) return;
-    setState((x) => ({ swarm: { ...x.swarm, busy: true } }));
-    setStatus('swarm running — five agents over the current evidence…');
-    void runSwarmRemote({ context: ctx, operatorNotes: notes, siteId: site?.id ?? null })
-      .then((res) => {
-        // Only non-abstained results become applyable proposals. A failed verifier still
-        // produces one, but the APPLY button stays locked and says why.
-        const proposals: Record<string, { value: ProposalValue; rationale: string; at: Date }> = {};
-        for (const r of res.results) {
-          if (r.abstained || r.value === null || r.error) continue;
-          proposals[r.key] = {
-            value: r.value as ProposalValue,
-            rationale: r.rationale,
-            at: new Date(res.generated),
-          };
-        }
-        setState((x) => ({
-          swarm: {
-            ...x.swarm,
-            run: res,
-            busy: false,
-            review: { result: null, busy: !!x.swarm.status?.review?.configured, error: null },
-          },
-          proposals,
-        }));
-        // Athena reads the finished run and writes the incident-commander paragraph. It
-        // proposes nothing and can fail without touching anything above.
-        if (getState().swarm.status?.review?.configured) {
-          void requestReview({ run: res, context: ctx, operatorNotes: notes })
-            .then((r) =>
-              setState((x) => ({
-                swarm: { ...x.swarm, review: { result: r, busy: false, error: null } },
-              })),
-            )
-            .catch((e: unknown) =>
-              setState((x) => ({
-                swarm: {
-                  ...x.swarm,
-                  review: {
-                    result: null,
-                    busy: false,
-                    error: e instanceof Error ? e.message : String(e),
-                  },
-                },
-              })),
-            );
-        }
-        const failed = res.results.filter((r) => !r.verified || r.error).length;
-        const abstained = res.results.filter((r) => r.abstained).length;
-        setStatus(
-          `swarm done in ${(res.totalMs / 1000).toFixed(1)}s · ${res.results.length} agents · ` +
-            `${abstained} abstained · ${failed} did not verify`,
-        );
-      })
-      .catch((e: unknown) => {
-        setState((x) => ({ swarm: { ...x.swarm, busy: false } }));
-        setStatus(`swarm failed: ${e instanceof Error ? e.message : String(e)}`);
-      });
+        const slot = viewer.getSlot(viewer.getActiveSlot());
+        const v = slot?.geom ? buildVerdict(slot.geom.planes) : null;
+
+        setStatus('rendering views …');
+        const images = viewer.captureViews(4);
+
+        setStatus(`${images.length} views — reading the surfaces …`);
+        const res = await runRoomRemote({
+          images,
+          geometryNote: v ? v.detail : null,
+          operatorNote: notes || null,
+        });
+        setState((x) => ({ swarm: { ...x.swarm, vision: res, visionBusy: false } }));
+        setStatus(res.error ? res.error : `captured in ${(res.ms / 1000).toFixed(1)}s`);
+      } catch (e) {
+        setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
+        setStatus(e instanceof Error ? e.message : String(e));
+      }
+    })();
   };
 
   const noKey = status ? !status.configured : false;
-  const runLabel = busy ? 'RUNNING…' : 'RUN SWARM';
+  const level = condition?.level ?? 'unknown';
 
   return (
     <>
-      <div className="sctx">
-        <div>
-          SITE&nbsp;&nbsp;
-          {site ? (
-            <>
-              <b>{site.name}</b> · ρ {rho(site).toFixed(3)} · n {site.n} q {site.q.toFixed(2)} r{' '}
-              {site.r.toFixed(2)} τ {site.tau.toFixed(1)}
-            </>
-          ) : (
-            <>
-              <b>none selected</b> — agents have no site to reason about
-            </>
-          )}
-        </div>
-        <div>
-          SCAN&nbsp;&nbsp;
-          {snap.slot ? (
-            <>
-              <b>{snap.slot.name}</b> · {fmtInt(snap.slot.kept)} pts · covariance{' '}
-              {snap.slot.hasCov ? 'yes' : 'no'} · 1 unit = {snap.metresPerUnit} m
-            </>
-          ) : (
-            <>
-              <b>slot {snap.slotKey} empty</b>
-            </>
-          )}
-        </div>
-        <div>
-          GEO&nbsp;&nbsp;&nbsp;
-          {snap.geom ? (
-            <>
-              <b>{snap.geom.planes.length} planes</b> · debris{' '}
-              {fmtNum(mVol(snap.geom.debris.totalVolume, snap.metresPerUnit))} m³ · residual{' '}
-              {(snap.geom.residualFrac * 100).toFixed(1)}%
-            </>
-          ) : (
-            <>
-              <b>not extracted</b> — press g to give the agents evidence
-            </>
-          )}
-        </div>
-        <div style={{ marginTop: 6, color: 'var(--dim)' }}>
-          payload {fmtInt(chars)} chars
-          {run ? ` · last run ${run.model} · ${(run.totalMs / 1000).toFixed(1)}s` : ''}
-        </div>
-      </div>
+      <button
+        className="btn primary"
+        style={{ width: '100%', marginBottom: 12 }}
+        disabled={busy || noKey || !viewer || !snap.slot}
+        onClick={capture}
+      >
+        {busy ? 'CAPTURING…' : 'CAPTURE DATA'}
+      </button>
 
-      <div className="ghead">OPERATOR NOTES</div>
-      <textarea
-        className="snotes"
-        value={notes}
-        placeholder="e.g. primary school, weekday 10:40, two classes reported unaccounted for"
-        onChange={(e) => setState((x) => ({ swarm: { ...x.swarm, notes: e.target.value } }))}
-      />
-
-      <div className="row" style={{ margin: '10px 0 4px' }}>
-        <button
-          className="btn primary"
-          disabled={busy || noKey || !site}
-          title={
-            noKey
-              ? 'no reasoner key on the server'
-              : !site
-                ? 'select a site first'
-                : 'run all five agents'
-          }
-          onClick={runNow}
-        >
-          {runLabel}
-        </button>
-        <button
-          className="btn"
-          onClick={() => {
-            const t = JSON.stringify(ctx, null, 2);
-            void copyText(t).then((ok) =>
-              ok
-                ? setStatus(`agent context copied — ${fmtInt(t.length)} chars`)
-                : (console.warn(t),
-                  setStatus('clipboard refused — the payload is on the console instead')),
-            );
-          }}
-        >
-          COPY CONTEXT
-        </button>
-        <button
-          className="btn"
-          onClick={() => {
-            setState((x) => ({ proposals: {}, swarm: { ...x.swarm, run: null } }));
-            setStatus('proposals cleared — the override log is kept');
-          }}
-        >
-          CLEAR
-        </button>
-      </div>
-      {noKey ? (
+      {noKey && status && (
         <div className="gnote" style={{ color: 'var(--amber)' }}>
-          {status?.error ? (
-            <>
-              Reasoner <b>{status.provider}</b> is configured but not usable: {status.error}
-            </>
-          ) : (
-            <>
-              No reasoner reachable. Put <b>OPENROUTER_API_API_KEY</b> (or OPENAI_API_KEY /
-              ANTHROPIC_API_KEY) in <b>.env.local</b> — <b>stripe projects env --pull</b> writes it
-              — and restart the dev server. Keys are read server-side only and never bundled into
-              the page.
-            </>
-          )}
+          {status.error ?? 'No API key — add one to .env.local and restart the dev server.'}
         </div>
-      ) : status ? (
-        <div className="gnote">
-          reasoner: {status.provider} · {status.model} · key never reaches the browser
-          {status.persist ? ' · runs logged to supabase' : ''}
-          {status.review?.configured ? ' · athena review on' : ''}
-        </div>
-      ) : null}
-
-      <div className="ghead">AGENTS</div>
-      {SWARM_AGENTS.map((a) => {
-        const res = byKey.get(a.key);
-        const pr = s.proposals[a.key];
-        const chip = res?.error
-          ? 'ERROR'
-          : res?.abstained
-            ? 'ABSTAINED'
-            : res && !res.verified
-              ? 'UNVERIFIED'
-              : pr
-                ? 'PROPOSED'
-                : 'NO PROPOSAL';
-        return (
-          <div className="sagent" key={a.key}>
-            <div className="top">
-              <span className="nm">{a.name}</span>
-              <span className="chip">→ {a.label}</span>
-              <span className={pr && res?.verified ? 'chip filled' : 'chip'}>{chip}</span>
-            </div>
-            <div className="q">
-              operator value now: <b>{paramText(site, a.param)}</b>
-            </div>
-
-            <div className={res ? 'sverdict filled' : 'sverdict'}>
-              {!res ? (
-                'no proposal yet — RUN SWARM to put the agents over the current evidence'
-              ) : res.error ? (
-                `agent failed: ${res.error}`
-              ) : (
-                <>
-                  {res.abstained ? (
-                    <b>ABSTAINED — no admissible evidence for this parameter</b>
-                  ) : (
-                    <b>proposes: {proposalText(res.value as ProposalValue, a.param)}</b>
-                  )}
-                  {`  ·  self-confidence ${res.selfConfidence}  ·  ${(res.ms / 1000).toFixed(1)}s`}
-                  <div style={{ marginTop: 5 }}>{res.rationale}</div>
-                  {res.evidenceUsed.length > 0 ? (
-                    <div className="scited">cited: {res.evidenceUsed.join('  ')}</div>
-                  ) : null}
-                  <div style={{ marginTop: 6 }}>
-                    {res.verdicts.map((v, i) => (
-                      <div className={VCLASS[v.status]} key={i}>
-                        {MARK[v.status]} {v.check}: {v.detail}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <button
-              className="btn sbtn"
-              disabled={!pr || !site || !res?.verified || res?.abstained}
-              title={
-                res && !res.verified
-                  ? 'a verifier failed — review the proposal before applying it'
-                  : res?.abstained
-                    ? 'the agent abstained, so there is nothing to apply'
-                    : 'apply this value to the slider and log the override'
-              }
-              onClick={() => apply(a.key)}
-            >
-              APPLY TO SLIDER
-            </button>
-          </div>
-        );
-      })}
-
-      {run && status?.review?.configured ? (
-        <>
-          <div className="ghead">INCIDENT REVIEW · ATHENA</div>
-          <div className={s.swarm.review.result ? 'sverdict filled' : 'sverdict'}>
-            {s.swarm.review.busy
-              ? 'Athena is reading the run…'
-              : s.swarm.review.error
-                ? `review unavailable: ${s.swarm.review.error}`
-                : s.swarm.review.result
-                  ? s.swarm.review.result.text
-                  : 'no review yet'}
-            {s.swarm.review.result ? (
-              <div className="scited">
-                {s.swarm.review.result.agent} · {(s.swarm.review.result.ms / 1000).toFixed(1)}s ·
-                advisory prose, proposes nothing
-                {s.swarm.review.result.publicUrl ? (
-                  <>
-                    {' · '}
-                    <a href={s.swarm.review.result.publicUrl} target="_blank" rel="noreferrer">
-                      open agent
-                    </a>
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </>
-      ) : null}
-
-      <div className="ghead">OVERRIDE LOG</div>
-      {!s.overrideLog.length ? (
-        <div className="gempty">
-          No overrides yet. Applying a proposal records what it replaced.
-        </div>
-      ) : (
-        [...s.overrideLog].reverse().map((e, i) => (
-          <div className="grow deb" key={i}>
-            <div className="top">
-              <span className="nm">
-                {e.at.toTimeString().slice(0, 8)} · {e.agent}
-              </span>
-            </div>
-            <div className="meta">
-              {e.label} · {e.from} → {e.to} · operator applied
-            </div>
-          </div>
-        ))
       )}
 
-      <details className="lim-details">
-        <summary>what this is not</summary>
-        <ul className="lim">
-          <li>
-            <b>q — P(trapped alive) has no agent.</b> Nothing in an exterior scan evidences whether
-            an occupant is alive, so it is left wholly to the operator. The gap is deliberate.
-          </li>
-          <li>A proposal is inert until applied. Applying is logged with the value it replaced.</li>
-          <li>
-            <b>Unverified is not a pass</b> — the evidence to check that claim is not in the payload
-            at all, which is the honest state for extraction probability and occupancy.
-          </li>
-          <li>
-            Agents read the derived geometry, never the raw cloud, and inherit all its limits.
-          </li>
-        </ul>
-      </details>
+      {condition && (
+        <>
+          <div className="verdict" style={{ borderLeftColor: CONDITION_CSS[level] }}>
+            <div className="v-level" style={{ color: CONDITION_CSS[level] }}>
+              {CONDITION_WORD[level]}
+            </div>
+            <div className="v-head">{condition.headline}</div>
+            <div className="v-detail">{condition.detail}</div>
+          </div>
+
+          {condition.lines
+            .filter((l) => !/not looked at yet|no geometry extracted/.test(l.text))
+            .map((l) => (
+              <div className="wline" key={l.label} style={{ cursor: 'default' }}>
+                <i style={{ background: TONE[l.tone] }} />
+                <span className="lbl">{l.label}</span>
+                <span className="say">{l.text}</span>
+              </div>
+            ))}
+        </>
+      )}
+
+      {room?.report && !room.report.abstain && room.report.defects.length > 0 && (
+        <>
+          <div className="ghead">DEFECTS</div>
+          {room.report.defects.map((d, i) => (
+            <div className="sagent" key={i}>
+              <div className="top">
+                <span className="nm">{DEFECT_LABEL[d.kind]}</span>
+                <span
+                  className="chip"
+                  style={{ borderColor: SEV_CSS[d.severity], color: SEV_CSS[d.severity] }}
+                >
+                  {d.severity}
+                </span>
+                {!STRUCTURAL_KINDS.has(d.kind) && <span className="chip">surface</span>}
+              </div>
+              <div className="q">{d.where}</div>
+              {d.note && <div className="rd">{d.note}</div>}
+              <div className="scited">
+                view{d.views.length === 1 ? '' : 's'} {d.views.join(', ') || '—'} · {d.confidence}{' '}
+                confidence
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {room?.error && <div className="gnote">{room.error}</div>}
+
+      {room && (
+        <details className="gnote-details">
+          <summary>detail</summary>
+          <textarea
+            className="snotes"
+            value={notes}
+            placeholder="anything you know about this room — age, construction, known repairs"
+            onChange={(e) => setState((x) => ({ swarm: { ...x.swarm, notes: e.target.value } }))}
+          />
+          <div style={{ marginTop: 8 }}>
+            {room.verdicts.map((v, i) => (
+              <div className={VCLASS[v.status]} key={i}>
+                {MARK[v.status]} {v.check}: {v.detail}
+              </div>
+            ))}
+          </div>
+          {room.report && (
+            <div className="scited">
+              {room.report.room_type || 'unidentified'} · capture {room.report.capture_quality} ·{' '}
+              {room.views} views · {room.model} · {(room.ms / 1000).toFixed(1)}s
+            </div>
+          )}
+          <ul className="lim" style={{ marginTop: 8 }}>
+            <li>Not a structural survey. It is a prompt to send someone qualified, or not.</li>
+            <li>
+              Geometry measures verticality and is blind to a crack; the views see cracking and are
+              blind to a small lean. The condition is the worse of the two.
+            </li>
+            <li>
+              Scan holes and speckle look like damage. Take “cannot judge” at face value and
+              recapture.
+            </li>
+          </ul>
+        </details>
+      )}
     </>
   );
 }
