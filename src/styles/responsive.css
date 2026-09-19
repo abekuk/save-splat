@@ -1,13 +1,46 @@
 /* ---------- narrow layout ---------- */
-@media (max-width:760px){
-  #app{flex-direction:column}
-  #view{flex:0 0 48%;height:48%}
-  #panel{width:100%;flex:1 1 auto;border-left:0;border-top:1px solid var(--line)}
-  #statusbar{max-width:calc(100% - 20px);bottom:8px;left:8px}
-  #hintbar{left:8px;right:8px;bottom:36px;text-align:center}
-  .brand{font-size:11px;letter-spacing:.1em}
-  .btn{padding:5px 7px;font-size:10px}
-  #topbar{gap:4px;padding:6px}
-  #tabs button{letter-spacing:.06em;font-size:10px}
-  .gsum{grid-template-columns:repeat(2,1fr)}
+@media (max-width: 760px) {
+  #app {
+    flex-direction: column;
+  }
+  #view {
+    flex: 0 0 48%;
+    height: 48%;
+  }
+  #panel {
+    width: 100%;
+    flex: 1 1 auto;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  #statusbar {
+    max-width: calc(100% - 20px);
+    bottom: 8px;
+    left: 8px;
+  }
+  #hintbar {
+    left: 8px;
+    right: 8px;
+    bottom: 36px;
+    text-align: center;
+  }
+  .brand {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+  }
+  .btn {
+    padding: 5px 7px;
+    font-size: 10px;
+  }
+  #topbar {
+    gap: 4px;
+    padding: 6px;
+  }
+  #tabs button {
+    letter-spacing: 0.06em;
+    font-size: 10px;
+  }
+  .gsum {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

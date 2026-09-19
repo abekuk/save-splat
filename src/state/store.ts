@@ -84,7 +84,11 @@ export function useStore<T>(select: (s: AppState) => T): T {
 }
 
 export function useAppState(): AppState {
-  return useSyncExternalStore(subscribe, () => state, () => state);
+  return useSyncExternalStore(
+    subscribe,
+    () => state,
+    () => state,
+  );
 }
 
 /* ---------------- site actions ---------------- */

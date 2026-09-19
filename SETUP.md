@@ -28,16 +28,16 @@ stripe projects status --json
 
 Three commands in it are **not real** in plugin 0.41.0 — they will just error:
 
-| Circulated | Reality |
-|---|---|
-| `stripe projects billing update --limit 5` | No such command. Billing is only `billing show`, `billing add`, `spend [provider]`. **There is no spend-limit flag.** |
-| `stripe projects share` | Doesn't exist. Use `stripe projects list`, then `stripe projects pull <projectId>` on the other machine. |
-| `npx skills add https://docs.stripe.com --skill stripe-projects -g -y` | The CLI's own guidance is `npx skills add --all stripe/ai`. |
+| Circulated                                                             | Reality                                                                                                               |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `stripe projects billing update --limit 5`                             | No such command. Billing is only `billing show`, `billing add`, `spend [provider]`. **There is no spend-limit flag.** |
+| `stripe projects share`                                                | Doesn't exist. Use `stripe projects list`, then `stripe projects pull <projectId>` on the other machine.              |
+| `npx skills add https://docs.stripe.com --skill stripe-projects -g -y` | The CLI's own guidance is `npx skills add --all stripe/ai`.                                                           |
 
 ### How to actually avoid charges
 
 Since no spend cap exists, the real guard is that **provisioning a paid service requires an
-explicit flag**. In non-interactive mode `--confirm-paid-service` is *required* — so as long as
+explicit flag**. In non-interactive mode `--confirm-paid-service` is _required_ — so as long as
 you never pass it, a paid tier cannot be provisioned by accident:
 
 ```bash

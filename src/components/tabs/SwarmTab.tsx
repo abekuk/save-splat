@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { AppSnapshot } from '@/core/snapshot';
-import { SWARM_AGENTS, agentByKey, coerce } from '@/core/swarm/agents';
+import { SWARM_AGENTS, agentByKey, parseProposal } from '@/core/swarm/agents';
 import type { AgentParam, ProposalValue } from '@/core/swarm/agents';
 import { buildSwarmContext, copyText } from '@/core/swarm/context';
 import { LAMBDA, TYPE_LABEL, rho } from '@/core/ranking';
@@ -51,14 +51,17 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             `no such agent "${key}" — try one of: ${SWARM_AGENTS.map((x) => x.key).join(', ')}`,
           );
         }
-        const v = coerce(a.param, value);
-        if (v === null) {
-          throw new Error(`value ${JSON.stringify(value)} is not valid for ${a.label}`);
+        const parsed = parseProposal(a.param, value);
+        if (!parsed.ok) {
+          throw new Error(`${a.label}: ${parsed.error} (received ${JSON.stringify(value)})`);
         }
         setState((st) => ({
-          proposals: { ...st.proposals, [key]: { value: v, rationale: rationale ?? '', at: new Date() } },
+          proposals: {
+            ...st.proposals,
+            [key]: { value: parsed.value, rationale: rationale ?? '', at: new Date() },
+          },
         }));
-        return v;
+        return parsed.value;
       },
       clear: () => setState({ proposals: {} }),
       log: () => getState().overrideLog.slice(),
@@ -88,8 +91,8 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
         are the contract, and every proposal slot stays empty until a reasoner is attached.
       </p>
       <div className="warn" style={{ marginBottom: 12 }}>
-        <b>Assisted assessment, not autonomous dispatch.</b> An agent proposes; the operator applies.
-        Sliders stay operator-set, and every override is recorded in the log below.
+        <b>Assisted assessment, not autonomous dispatch.</b> An agent proposes; the operator
+        applies. Sliders stay operator-set, and every override is recorded in the log below.
       </div>
 
       <div className="ghead">CONTEXT HANDED TO EVERY AGENT</div>
@@ -102,7 +105,9 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
               {site.r.toFixed(2)} τ {site.tau.toFixed(1)}
             </>
           ) : (
-            <><b>none selected</b> — agents have no site to reason about</>
+            <>
+              <b>none selected</b> — agents have no site to reason about
+            </>
           )}
         </div>
         <div>
@@ -113,7 +118,9 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
               {snap.slot.hasCov ? 'yes' : 'no'} · 1 unit = {snap.metresPerUnit} m
             </>
           ) : (
-            <><b>slot {snap.slotKey} empty</b></>
+            <>
+              <b>slot {snap.slotKey} empty</b>
+            </>
           )}
         </div>
         <div>
@@ -125,7 +132,9 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
               {(snap.geom.residualFrac * 100).toFixed(1)}%
             </>
           ) : (
-            <><b>not extracted</b> — press g to give the agents evidence</>
+            <>
+              <b>not extracted</b> — press g to give the agents evidence
+            </>
           )}
         </div>
         <div style={{ marginTop: 6, color: 'var(--dim)' }}>payload {fmtInt(chars)} chars</div>
@@ -139,7 +148,8 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             void copyText(t).then((ok) =>
               ok
                 ? setStatus(`agent context copied — ${fmtInt(t.length)} chars`)
-                : (console.log(t), setStatus('clipboard refused — the payload is on the console instead')),
+                : (console.warn(t),
+                  setStatus('clipboard refused — the payload is on the console instead')),
             );
           }}
         >
@@ -176,11 +186,7 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
                 ? `${pr.rationale || 'no rationale given'}\n\nproposes: ${proposalText(pr.value, a.param)}`
                 : 'no proposal — no reasoner is attached in this build'}
             </div>
-            <button
-              className="btn sbtn"
-              disabled={!pr || !site}
-              onClick={() => apply(a.key)}
-            >
+            <button className="btn sbtn" disabled={!pr || !site} onClick={() => apply(a.key)}>
               APPLY TO SLIDER
             </button>
           </div>
@@ -210,8 +216,9 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
       <div className="ghead">WHAT THIS IS NOT</div>
       <ul className="lim">
         <li>
-          Not a running swarm. No backend, no API key, no network call — <b>COPY CONTEXT</b> puts the
-          exact payload on the clipboard so it can be reasoned over elsewhere and pasted back in.
+          Not a running swarm. No backend, no API key, no network call — <b>COPY CONTEXT</b> puts
+          the exact payload on the clipboard so it can be reasoned over elsewhere and pasted back
+          in.
         </li>
         <li>
           <b>q — P(trapped alive) has no agent.</b> Nothing in an exterior scan evidences whether an
@@ -222,7 +229,10 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
           A proposal is inert until an operator applies it. Applying is an operator decision, logged
           with the value it replaced.
         </li>
-        <li>A verifier is a cheap disagreement check, not a proof. It catches only the failure it was built for.</li>
+        <li>
+          A verifier is a cheap disagreement check, not a proof. It catches only the failure it was
+          built for.
+        </li>
       </ul>
     </>
   );

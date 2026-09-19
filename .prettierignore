@@ -1,0 +1,12 @@
+dist
+coverage
+node_modules
+package-lock.json
+
+# Verbatim ports: the hand-aligned matrix and RANSAC maths is deliberately laid out for
+# reading, and reflowing it to 100 columns makes it materially harder to audit against
+# the reference implementation. Formatting is enforced everywhere else.
+src/core/geometry/extract.ts
+src/core/ply/parse.ts
+src/core/orientation.ts
+src/core/synthetic.ts

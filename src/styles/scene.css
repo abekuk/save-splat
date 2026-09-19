@@ -1,37 +1,178 @@
 /* ---------- 3D view ---------- */
-#view{position:relative;flex:1 1 auto;min-width:0;overflow:hidden;
-      background:radial-gradient(1100px 760px at 50% 34%, #141821 0%, #07080b 72%)}
-canvas#gl{display:block;width:100%;height:100%;touch-action:none;cursor:default}
-body.marking canvas#gl{cursor:crosshair}
+#view {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  background: radial-gradient(1100px 760px at 50% 34%, #141821 0%, #07080b 72%);
+}
+canvas#gl {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: default;
+}
+body.marking canvas#gl {
+  cursor: crosshair;
+}
 
-#labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.label{position:absolute;left:0;top:0;transform:translate(-50%,-150%);pointer-events:auto;cursor:pointer;
-  font-family:var(--mono);font-size:11px;line-height:1;padding:3px 6px;border-radius:3px;white-space:nowrap;
-  background:rgba(10,12,16,.86);border:1px solid var(--accent);color:var(--accent);user-select:none}
-.label.low{border-color:var(--amber);color:var(--amber)}
-.label.sel{background:var(--accent);color:#0a0c10;border-color:#fff}
-.label.low.sel{background:var(--amber);color:#0a0c10;border-color:#fff}
+#labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -150%);
+  pointer-events: auto;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  background: rgba(10, 12, 16, 0.86);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  user-select: none;
+}
+.label.low {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.label.sel {
+  background: var(--accent);
+  color: #0a0c10;
+  border-color: #fff;
+}
+.label.low.sel {
+  background: var(--amber);
+  color: #0a0c10;
+  border-color: #fff;
+}
 
-#topbar{position:absolute;top:0;left:0;right:0;display:flex;gap:6px;align-items:center;flex-wrap:wrap;
-  padding:8px 10px;background:linear-gradient(180deg,rgba(10,12,16,.92),rgba(10,12,16,0));pointer-events:none}
-#topbar>*{pointer-events:auto}
-.brand{font-family:var(--mono);letter-spacing:.18em;font-size:12px;color:var(--accent);margin-right:4px;white-space:nowrap}
-.brand span{color:var(--dim);letter-spacing:.08em}
-.sep{width:1px;height:18px;background:var(--line);margin:0 2px}
+#topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, rgba(10, 12, 16, 0.92), rgba(10, 12, 16, 0));
+  pointer-events: none;
+}
+#topbar > * {
+  pointer-events: auto;
+}
+.brand {
+  font-family: var(--mono);
+  letter-spacing: 0.18em;
+  font-size: 12px;
+  color: var(--accent);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+.brand span {
+  color: var(--dim);
+  letter-spacing: 0.08em;
+}
+.sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 2px;
+}
 
-#statusbar{position:absolute;left:10px;bottom:10px;max-width:62%;font-family:var(--mono);font-size:10.5px;
-  color:var(--dim);background:rgba(8,10,14,.78);border:1px solid var(--line);padding:5px 8px;border-radius:3px}
-#hintbar{position:absolute;right:10px;bottom:10px;font-family:var(--mono);font-size:10.5px;color:var(--accent);
-  background:rgba(8,10,14,.82);border:1px solid var(--accent);padding:5px 8px;border-radius:3px;display:none}
-#hintbar.on{display:block}
+#statusbar {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: 62%;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--dim);
+  background: rgba(8, 10, 14, 0.78);
+  border: 1px solid var(--line);
+  padding: 5px 8px;
+  border-radius: 3px;
+}
+#hintbar {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--accent);
+  background: rgba(8, 10, 14, 0.82);
+  border: 1px solid var(--accent);
+  padding: 5px 8px;
+  border-radius: 3px;
+  display: none;
+}
+#hintbar.on {
+  display: block;
+}
 
 /* ---------- load progress overlay ---------- */
-#loadbox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(430px,calc(100% - 32px));
-  background:rgba(12,15,20,.96);border:1px solid var(--line);border-radius:4px;padding:14px 15px;
-  display:none;z-index:6;box-shadow:0 18px 50px rgba(0,0,0,.55)}
-#loadbox.on{display:block}
-#loadbox .lt{font-family:var(--mono);font-size:10px;letter-spacing:.16em;color:var(--accent);margin-bottom:7px}
-#loadbox .lf{font-family:var(--mono);font-size:11.5px;color:var(--fg);word-break:break-all;line-height:1.4}
-#loadbox .lm{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:6px;line-height:1.5;min-height:15px}
-#loadbox .bar{display:block;height:4px;background:var(--line);border-radius:2px;margin-top:10px;overflow:hidden}
-#loadbox .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .12s linear}
+#loadbox {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(430px, calc(100% - 32px));
+  background: rgba(12, 15, 20, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 14px 15px;
+  display: none;
+  z-index: 6;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+#loadbox.on {
+  display: block;
+}
+#loadbox .lt {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  margin-bottom: 7px;
+}
+#loadbox .lf {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--fg);
+  word-break: break-all;
+  line-height: 1.4;
+}
+#loadbox .lm {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: 6px;
+  line-height: 1.5;
+  min-height: 15px;
+}
+#loadbox .bar {
+  display: block;
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+#loadbox .bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.12s linear;
+}

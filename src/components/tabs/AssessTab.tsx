@@ -61,7 +61,11 @@ export default function AssessTab({ viewer, snap }: { viewer: Viewer | null; sna
           from witnesses, rosters, neighbours or time-of-day occupancy estimates.
         </div>
         <input
-          type="range" min={0} max={50} step={1} value={site.n}
+          type="range"
+          min={0}
+          max={50}
+          step={1}
+          value={site.n}
           onChange={(e) => set({ n: parseInt(e.target.value, 10) })}
         />
       </div>
@@ -73,10 +77,15 @@ export default function AssessTab({ viewer, snap }: { viewer: Viewer | null; sna
         </div>
         <div className="note">
           Probability an occupant is trapped and still alive now. From void-space evidence, hours
-          since collapse, weather exposure, and any contact — voice, tapping, phone ping, canine alert.
+          since collapse, weather exposure, and any contact — voice, tapping, phone ping, canine
+          alert.
         </div>
         <input
-          type="range" min={0} max={1} step={0.01} value={site.q}
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={site.q}
           onChange={(e) => set({ q: parseFloat(e.target.value) })}
         />
       </div>
@@ -91,7 +100,11 @@ export default function AssessTab({ viewer, snap }: { viewer: Viewer | null; sna
           cutting and shoring burden, secondary-collapse risk and crew capability.
         </div>
         <input
-          type="range" min={0} max={1} step={0.01} value={site.r}
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={site.r}
           onChange={(e) => set({ r: parseFloat(e.target.value) })}
         />
       </div>
@@ -106,7 +119,11 @@ export default function AssessTab({ viewer, snap }: { viewer: Viewer | null; sna
           volume to move, breaching and shoring required, and site access.
         </div>
         <input
-          type="range" min={0.5} max={24} step={0.5} value={site.tau}
+          type="range"
+          min={0.5}
+          max={24}
+          step={0.5}
+          value={site.tau}
           onChange={(e) => set({ tau: parseFloat(e.target.value) })}
         />
       </div>
@@ -146,9 +163,7 @@ export default function AssessTab({ viewer, snap }: { viewer: Viewer | null; sna
           {CONFS.map((c) => (
             <button
               key={c}
-              className={
-                site.conf === c ? (c === 'low' ? 'on amber' : 'on') : undefined
-              }
+              className={site.conf === c ? (c === 'low' ? 'on amber' : 'on') : undefined}
               onClick={() => set({ conf: c })}
             >
               {c.toUpperCase()}
@@ -159,9 +174,8 @@ export default function AssessTab({ viewer, snap }: { viewer: Viewer | null; sna
 
       <div className="readout">
         <span className="dim">ρ = ( n × q × r × λ ) / max(0.1, τ)</span>
-        <br />
-        ρ = ( {site.n} × {site.q.toFixed(2)} × {site.r.toFixed(2)} × {LAMBDA[site.type].toFixed(3)} ) /{' '}
-        {Math.max(0.1, site.tau).toFixed(1)}
+        <br />ρ = ( {site.n} × {site.q.toFixed(2)} × {site.r.toFixed(2)} ×{' '}
+        {LAMBDA[site.type].toFixed(3)} ) / {Math.max(0.1, site.tau).toFixed(1)}
         <span className={low ? 'big amber' : 'big'}>{rho(site).toFixed(3)}</span>
         <span className="unit">LIVES / CREW-HOUR</span>
         {low && (
@@ -195,7 +209,9 @@ export default function AssessTab({ viewer, snap }: { viewer: Viewer | null; sna
           Area <b>{fmtNum(mArea(np.plane.area, snap.metresPerUnit))} m²</b>, rms residual{' '}
           <b>{fmtNum(mLen(np.plane.rms, snap.metresPerUnit), 3)} m</b>.
           <br />
-          <span className="dim">Measured evidence for the operator. It does not set any slider.</span>
+          <span className="dim">
+            Measured evidence for the operator. It does not set any slider.
+          </span>
         </div>
       )}
 

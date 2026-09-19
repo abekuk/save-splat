@@ -403,14 +403,21 @@ export function createViewer(
         'position',
         new THREE.BufferAttribute(
           new Float32Array([
-            c[0], c[1], c[2],
-            c[0] + p.n[0] * len, c[1] + p.n[1] * len, c[2] + p.n[2] * len,
+            c[0],
+            c[1],
+            c[2],
+            c[0] + p.n[0] * len,
+            c[1] + p.n[1] * len,
+            c[2] + p.n[2] * len,
           ]),
           3,
         ),
       );
       planeGroup.add(
-        new THREE.Line(ng, new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.55 })),
+        new THREE.Line(
+          ng,
+          new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.55 }),
+        ),
       );
 
       const el = document.createElement('div');
@@ -529,8 +536,17 @@ export function createViewer(
     scene.add(pts);
 
     slots[key] = {
-      obj: pts, name, kept: res.kept, total: res.total, orient: idx, auto,
-      detected: det, alphas: res.alphas ?? null, cov: res.cov ?? null, radius: rad, geom: null,
+      obj: pts,
+      name,
+      kept: res.kept,
+      total: res.total,
+      orient: idx,
+      auto,
+      detected: det,
+      alphas: res.alphas ?? null,
+      cov: res.cov ?? null,
+      radius: rad,
+      geom: null,
     };
     activeSlot = key;
     setActiveSlot(key);
@@ -574,8 +590,14 @@ export function createViewer(
     const s = slots[k];
     if (!s) return null;
     return {
-      name: s.name, kept: s.kept, total: s.total, orient: ORIENTS[s.orient],
-      hasCov: !!s.cov, radius: s.radius, auto: s.auto, geom: s.geom,
+      name: s.name,
+      kept: s.kept,
+      total: s.total,
+      orient: ORIENTS[s.orient],
+      hasCov: !!s.cov,
+      radius: s.radius,
+      auto: s.auto,
+      geom: s.geom,
     };
   }
 

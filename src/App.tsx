@@ -6,7 +6,13 @@ import { ranked } from '@/core/ranking';
 import { loadPlyFile } from '@/core/ply/load';
 import { makeSynthetic } from '@/core/synthetic';
 import {
-  addSite, getState, selectSite, setHint, setState, setStatus, useAppState,
+  addSite,
+  getState,
+  selectSite,
+  setHint,
+  setState,
+  setStatus,
+  useAppState,
 } from '@/state/store';
 import TopBar from '@/components/TopBar';
 import LoadOverlay from '@/components/LoadOverlay';
@@ -16,8 +22,7 @@ export default function App() {
   const viewRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<Viewer | null>(null);
-  const [ready, setReady] = useState(false);
+  const [viewer, setViewer] = useState<Viewer | null>(null);
   const s = useAppState();
 
   /* ---- viewer lifecycle ---- */
@@ -32,8 +37,7 @@ export default function App() {
       onMarkModeChange: (on) => setState({ markMode: on }),
       onSlotsChanged: () => setState((st) => ({ slotsVersion: st.slotsVersion + 1 })),
     });
-    viewerRef.current = v;
-    setReady(true);
+    setViewer(v);
 
     // The synthetic field auto-loads so the app is never a blank screen on open. It is
     // provisional: the first real .ply replaces it rather than being pushed into slot B.
@@ -41,7 +45,9 @@ export default function App() {
       if (!v.getSlot('A') && !v.getSlot('B')) {
         try {
           v.installCloud(makeSynthetic(), 'synthetic rubble field', 0, true);
-          setStatus('synthetic rubble field loaded — press m and click a structure to place the first site');
+          setStatus(
+            'synthetic rubble field loaded — press m and click a structure to place the first site',
+          );
         } catch (err) {
           console.error(err);
         }
@@ -51,60 +57,65 @@ export default function App() {
     return () => {
       window.clearTimeout(t);
       v.dispose();
-      viewerRef.current = null;
-      setReady(false);
+      setViewer(null);
     };
   }, []);
 
   /* ---- keep viewer markers in step with the store ---- */
   useEffect(() => {
     const ranks = new Map(ranked(s.sites).map((x, i) => [x.id, i + 1] as const));
-    viewerRef.current?.syncSites(s.sites, s.selectedId, ranks);
-  }, [s.sites, s.selectedId]);
+    viewer?.syncSites(s.sites, s.selectedId, ranks);
+  }, [viewer, s.sites, s.selectedId]);
 
   /* ---- loading ---- */
-  const load = useCallback((file: File) => {
-    const v = viewerRef.current;
-    if (!v) return;
-    if (getState().loading) {
-      setStatus('already loading a scan — let it finish first');
-      return;
-    }
-    setState({ loadFile: `${file.name}`, loading: { phase: 'reading', frac: 0, message: 'opening …' } });
-    void loadPlyFile(file, {
-      onProgress: (p) => setState({ loading: p }),
-      onDone: (res) => {
-        try {
-          v.installCloud(res, file.name, null);
-        } catch (err) {
-          console.error(err);
+  const load = useCallback(
+    (file: File) => {
+      const v = viewer;
+      if (!v) return;
+      if (getState().loading) {
+        setStatus('already loading a scan — let it finish first');
+        return;
+      }
+      setState({
+        loadFile: `${file.name}`,
+        loading: { phase: 'reading', frac: 0, message: 'opening …' },
+      });
+      void loadPlyFile(file, {
+        onProgress: (p) => setState({ loading: p }),
+        onDone: (res) => {
+          try {
+            v.installCloud(res, file.name, null);
+          } catch (err) {
+            console.error(err);
+            setState({ loading: null });
+            setStatus(`could not build the point cloud: ${(err as Error).message}`);
+            return;
+          }
+          setState({ loading: null, selectedPlane: -1 });
+        },
+        onFail: (msg, err) => {
+          if (err) console.error(err);
           setState({ loading: null });
-          setStatus(`could not build the point cloud: ${(err as Error).message}`);
-          return;
-        }
-        setState({ loading: null, selectedPlane: -1 });
-      },
-      onFail: (msg, err) => {
-        if (err) console.error(err);
-        setState({ loading: null });
-        setStatus(`load failed: ${msg}`);
-        window.alert(
-          `Could not load "${file.name}".\n\n${msg}\n\n` +
-            'Rubble reads point/splat .ply files (Scaniverse, Polycam, gaussian-splat exports). ' +
-            'A mesh-only .ply with no vertex coordinates, or a file that is not a .ply at all, will fail here.',
-        );
-      },
-      confirmLarge: (msg) => window.confirm(msg),
-      onCancel: () => {
-        setState({ loading: null });
-        setStatus(`cancelled — ${file.name} was not loaded`);
-      },
-    });
-  }, []);
+          setStatus(`load failed: ${msg}`);
+          window.alert(
+            `Could not load "${file.name}".\n\n${msg}\n\n` +
+              'Rubble reads point/splat .ply files (Scaniverse, Polycam, gaussian-splat exports). ' +
+              'A mesh-only .ply with no vertex coordinates, or a file that is not a .ply at all, will fail here.',
+          );
+        },
+        confirmLarge: (msg) => window.confirm(msg),
+        onCancel: () => {
+          setState({ loading: null });
+          setStatus(`cancelled — ${file.name} was not loaded`);
+        },
+      });
+    },
+    [viewer],
+  );
 
   /* ---- geometry ---- */
   const runGeometry = useCallback(() => {
-    const v = viewerRef.current;
+    const v = viewer;
     if (!v) return;
     const input = v.getExtractInput();
     if (!input) {
@@ -116,7 +127,8 @@ export default function App() {
     v.setGeom(null);
     extractGeometry(
       input,
-      (planes, stage, frac) => setState({ geoStage: 'ransac', geoProgress: { planes, stage, frac } }),
+      (planes, stage, frac) =>
+        setState({ geoStage: 'ransac', geoProgress: { planes, stage, frac } }),
       (g) => {
         v.setGeom(g);
         setState({ geoStage: 'done', geoProgress: null });
@@ -133,7 +145,7 @@ export default function App() {
         setStatus(`geometry failed: ${err.message}`);
       },
     );
-  }, []);
+  }, [viewer]);
 
   /* ---- keyboard ---- */
   useEffect(() => {
@@ -143,7 +155,7 @@ export default function App() {
         if (e.key === 'Escape') t.blur();
         return;
       }
-      const v = viewerRef.current;
+      const v = viewer;
       if (!v) return;
       if (e.key === 'm' || e.key === 'M') v.setMarkMode(!v.isMarkMode());
       else if (e.key === 'Escape') {
@@ -165,7 +177,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [runGeometry]);
+  }, [viewer, runGeometry]);
 
   const onDrop = (e: React.DragEvent): void => {
     e.preventDefault();
@@ -175,20 +187,17 @@ export default function App() {
 
   return (
     <div id="app">
-      <div
-        id="view"
-        ref={viewRef}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-      >
+      <div id="view" ref={viewRef} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
         <canvas id="gl" ref={canvasRef} />
         <div id="labels" ref={labelsRef} />
-        <TopBar viewer={viewerRef.current} ready={ready} onLoadFile={load} onGeometry={runGeometry} />
+        <TopBar viewer={viewer} onLoadFile={load} onGeometry={runGeometry} />
         <div id="statusbar">{s.status}</div>
-        <div id="hintbar" className={s.hint ? 'on' : undefined}>{s.hint}</div>
+        <div id="hintbar" className={s.hint ? 'on' : undefined}>
+          {s.hint}
+        </div>
         <LoadOverlay progress={s.loading} file={s.loadFile} />
       </div>
-      <Panel viewer={viewerRef.current} onGeometry={runGeometry} />
+      <Panel viewer={viewer} onGeometry={runGeometry} />
     </div>
   );
 }
