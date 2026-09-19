@@ -35,18 +35,15 @@ export default function Landing({
       <header className="lhead">
         <div className="wordmark">
           <span className="mk" aria-hidden="true" />
-          savesplt
+          savesplat
         </div>
-        <nav>
-          <a href="#what">What is savesplt</a>
-        </nav>
       </header>
 
       <main className="lmain">
         <Halftone className="hero" />
 
         <div className="pitch">
-          <h1>Measurable structure from a scan.</h1>
+          <h1>Measurable 3D structure.</h1>
           <p className="sub">
             Drop a gaussian splat. Get wall verticality, slab angles and debris volume — not a mesh.
           </p>
@@ -76,7 +73,6 @@ export default function Landing({
       </main>
 
       <footer className="lfoot">
-        <span id="what">Post-disaster triage, ranked by expected lives per crew-hour</span>
         <a href="https://github.com/forkiron/save-splat" target="_blank" rel="noreferrer">
           GitHub
         </a>

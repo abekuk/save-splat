@@ -1,6 +1,6 @@
 # save-splat
 
-**Rubble** — a post-disaster triage viewer. Loads a Scaniverse/Polycam gaussian-splat `.ply`,
+**savesplat** — a post-disaster triage viewer. Loads a Scaniverse/Polycam gaussian-splat `.ply`,
 extracts measurable structural facts from it (wall verticality, slab and lean-to angles, debris
 volume), and ranks assessment sites by expected lives saved per crew-hour.
 

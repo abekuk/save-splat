@@ -52,7 +52,7 @@ export default function TopBar({
   return (
     <div id="topbar">
       <button className="brand" onClick={onExit} title="Back to the start">
-        savesplt
+        savesplat
       </button>
 
       <button className="btn" onClick={() => fileRef.current?.click()}>

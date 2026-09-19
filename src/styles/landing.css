@@ -48,6 +48,9 @@
   border-top: 1px solid #ececec;
   font-size: 13px;
   color: #6b6b6b;
+  /* only the repo link lives here now, so keep it to the right rather than
+     letting space-between strand it on the left */
+  justify-content: flex-end;
 }
 
 .wordmark {
