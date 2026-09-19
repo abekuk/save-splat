@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { clamp, fmtInt } from '@/core/util';
 import { ORIENTS, detectOrientation } from '@/core/orientation';
+import { robustExtent } from '@/core/cloud/trim';
 import type { OrientationDetection } from '@/core/orientation';
 import { CLS_CSS, CLS_HEX } from '@/core/geometry/extract';
 import type { ExtractInput } from '@/core/geometry/extract';
@@ -37,6 +38,8 @@ interface SlotInternal {
   alphas: Float32Array | null;
   cov: Float32Array | null;
   radius: number;
+  /** median centre, in the cloud's own frame — robust, unlike a bounding-sphere centre */
+  centre: [number, number, number];
   geom: GeometryResult | null;
 }
 
@@ -482,12 +485,10 @@ export function createViewer(
   function frameSlot(key: SlotKey): void {
     const s = slots[key];
     if (!s) return;
-    const sph = s.obj.geometry.boundingSphere;
-    if (!sph) return;
-    const c = sph.center.clone();
+    const c = new THREE.Vector3(s.centre[0], s.centre[1], s.centre[2]);
     s.obj.updateMatrixWorld();
     c.applyMatrix4(s.obj.matrixWorld);
-    const rad = isFinite(sph.radius) && sph.radius > 0 ? sph.radius : 10;
+    const rad = isFinite(s.radius) && s.radius > 0 ? s.radius : 10;
 
     orbit.target.copy(c);
     orbit.radius = clamp(rad * 2.2, 0.3, 600);
@@ -517,8 +518,11 @@ export function createViewer(
     geo.setAttribute('position', new THREE.BufferAttribute(res.positions, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(res.colors, 3));
     geo.computeBoundingSphere();
-    const sph = geo.boundingSphere;
-    const rad = sph && isFinite(sph.radius) && sph.radius > 0 ? sph.radius : 10;
+    /* Not the bounding sphere: one far-field Gaussian would set the point size, the camera
+       framing and every scale-relative tolerance in the extractor. The scene is where the
+       material is, so the extent comes from a percentile. */
+    const ext = robustExtent(res.positions);
+    const rad = isFinite(ext.radius) && ext.radius > 0 ? ext.radius : 10;
 
     const mat = new THREE.PointsMaterial({
       size: Math.max(0.004, rad * 0.0035),
@@ -547,6 +551,7 @@ export function createViewer(
       alphas: res.alphas ?? null,
       cov: res.cov ?? null,
       radius: rad,
+      centre: ext.centre,
       geom: null,
     };
     activeSlot = key;
