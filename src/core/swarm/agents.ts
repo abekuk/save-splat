@@ -9,11 +9,12 @@
  * whether an occupant is alive, so it is left wholly to the operator rather than given a
  * plausible-looking number.
  */
-import type { CollapseType, Confidence } from '@/types';
+import type { AgentParam, ProposalValue } from './schema';
+
+export type { AgentParam, ProposalValue };
+export { parseProposal, PARAM_SCHEMAS } from './schema';
 
 export type AgentKey = 'records' | 'access' | 'volume' | 'morphology' | 'corroboration';
-export type AgentParam = 'n' | 'r' | 'tau' | 'type' | 'conf';
-export type ProposalValue = number | CollapseType | Confidence;
 
 export interface SwarmAgent {
   key: AgentKey;
@@ -83,21 +84,4 @@ export const SWARM_AGENTS: SwarmAgent[] = [
 
 export function agentByKey(k: string): SwarmAgent | null {
   return SWARM_AGENTS.find((a) => a.key === k) ?? null;
-}
-
-/** A proposal is refused unless it is the right shape for the slider it targets, so a
- *  malformed reasoner cannot push a site into a state the UI cannot represent. */
-export function coerce(param: AgentParam, v: unknown): ProposalValue | null {
-  if (param === 'type') {
-    return v === 'pancake' || v === 'mixed' || v === 'lean' ? v : null;
-  }
-  if (param === 'conf') {
-    return v === 'low' || v === 'med' || v === 'high' ? v : null;
-  }
-  if (typeof v !== 'number' || !isFinite(v)) return null;
-  const clamp = (x: number, a: number, b: number): number => Math.min(b, Math.max(a, x));
-  if (param === 'n') return Math.round(clamp(v, 0, 50));
-  if (param === 'r') return clamp(v, 0, 1);
-  if (param === 'tau') return clamp(v, 0.5, 24);
-  return null;
 }

@@ -8,7 +8,9 @@ import { useAppState } from './store';
  *  slotsVersion. */
 export function useSnapshot(viewer: Viewer | null): AppSnapshot {
   const s = useAppState();
+  const version = s.slotsVersion;
   return useMemo(() => {
+    void version; // recompute when the viewer reports a slot change
     const key = viewer ? viewer.getActiveSlot() : 'A';
     const slot = viewer ? viewer.getSlot(key) : null;
     return {
@@ -19,5 +21,5 @@ export function useSnapshot(viewer: Viewer | null): AppSnapshot {
       metresPerUnit: s.metresPerUnit,
       selectedId: s.selectedId,
     };
-  }, [viewer, s.sites, s.metresPerUnit, s.selectedId, s.slotsVersion]);
+  }, [viewer, s.sites, s.metresPerUnit, s.selectedId, version]);
 }

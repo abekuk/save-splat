@@ -146,9 +146,24 @@ export function exportJson(snap: AppSnapshot): void {
 }
 
 const CSV_COLS = [
-  'rank', 'name', 'rho_lives_per_crew_hour', 'occupancy_persons', 'p_trapped_alive',
-  'p_extraction_success', 'collapse_type', 'lambda_per_hour', 'crew_hours_tau', 'confidence',
-  'x', 'y', 'z', 'plane', 'surface_class', 'tilt_deg', 'drift_ratio', 'drift_band',
+  'rank',
+  'name',
+  'rho_lives_per_crew_hour',
+  'occupancy_persons',
+  'p_trapped_alive',
+  'p_extraction_success',
+  'collapse_type',
+  'lambda_per_hour',
+  'crew_hours_tau',
+  'confidence',
+  'x',
+  'y',
+  'z',
+  'plane',
+  'surface_class',
+  'tilt_deg',
+  'drift_ratio',
+  'drift_band',
 ];
 
 function cell(v: unknown): string {
@@ -162,12 +177,27 @@ export function exportCsv(snap: AppSnapshot): void {
     const gm = r.geometry;
     rows.push(
       [
-        r.rank, r.name, r.rho_lives_per_crew_hour, r.occupancy_persons, r.p_trapped_alive,
-        r.p_extraction_success, r.collapse_type, r.lambda_per_hour, r.crew_hours_tau,
-        r.confidence, r.position.x, r.position.y, r.position.z,
-        gm?.plane ?? '', gm?.surface_class ?? '', gm?.tilt_deg ?? '',
-        gm?.drift_ratio ?? '', gm?.drift_band ?? '',
-      ].map(cell).join(','),
+        r.rank,
+        r.name,
+        r.rho_lives_per_crew_hour,
+        r.occupancy_persons,
+        r.p_trapped_alive,
+        r.p_extraction_success,
+        r.collapse_type,
+        r.lambda_per_hour,
+        r.crew_hours_tau,
+        r.confidence,
+        r.position.x,
+        r.position.y,
+        r.position.z,
+        gm?.plane ?? '',
+        gm?.surface_class ?? '',
+        gm?.tilt_deg ?? '',
+        gm?.drift_ratio ?? '',
+        gm?.drift_band ?? '',
+      ]
+        .map(cell)
+        .join(','),
     );
   }
   download(`rubble-queue-${stamp()}.csv`, rows.join('\n') + '\n', 'text/csv');

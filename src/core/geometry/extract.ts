@@ -82,18 +82,20 @@ export const GEO = {
 };
 
 /* drift ratio delta = tan(theta). Bands are indicative engineering practice, not code. */
-const DRIFT_BANDS: Band[] = [
-  { max: 0.005,    name: 'COSMETIC', hex: 0x7d8896, css: '#7d8896' },
-  { max: 0.010,    name: 'MINOR',    hex: 0xffc21f, css: '#ffc21f' },
-  { max: 0.020,    name: 'MODERATE', hex: 0xff8a1f, css: '#ff8a1f' },
-  { max: Infinity, name: 'SEVERE',   hex: 0xff3b30, css: '#ff3b30' }
+/* Darkened for a light background: the original yellow/orange band colours were tuned
+   against a near-black panel and vanish on white. Band names and thresholds are unchanged. */
+export const DRIFT_BANDS: Band[] = [
+  { max: 0.005,    name: 'COSMETIC', hex: 0x6b7280, css: '#6b7280' },
+  { max: 0.010,    name: 'MINOR',    hex: 0xb45309, css: '#b45309' },
+  { max: 0.020,    name: 'MODERATE', hex: 0xc2410c, css: '#c2410c' },
+  { max: Infinity, name: 'SEVERE',   hex: 0xb91c1c, css: '#b91c1c' }
 ];
 export function driftBand(d: number): DriftBand {
   for (var i = 0; i < DRIFT_BANDS.length; i++) if (d < DRIFT_BANDS[i].max) return DRIFT_BANDS[i];
   return DRIFT_BANDS[DRIFT_BANDS.length - 1];
 }
-export const CLS_HEX: Record<string, number> = { slab: 0x4a9eff, incline: 0x35d0c0 };
-export const CLS_CSS: Record<string, string> = { slab: '#4a9eff', incline: '#35d0c0' };
+export const CLS_HEX: Record<string, number> = { slab: 0x1d4ed8, incline: 0x0f766e };
+export const CLS_CSS: Record<string, string> = { slab: '#1d4ed8', incline: '#0f766e' };
 
 /* ---------- 3x3 symmetric eigen-decomposition (cyclic Jacobi) ---------- */
 function jacobi3(m: ArrayLike<number>): { vals: number[]; vecs: number[][] } {                       // m = [s00, s01, s02, s11, s12, s22]

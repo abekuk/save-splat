@@ -265,7 +265,7 @@ export function createViewer(
       if (!h) {
         // depthTest off so a marker behind rubble is never lost on stage
         const mat = new THREE.MeshBasicMaterial({
-          color: 0xff6b35,
+          color: 0xe8590c,
           depthTest: false,
           transparent: true,
           opacity: 0.95,
@@ -291,7 +291,7 @@ export function createViewer(
       h.el.classList.toggle('low', s.conf === 'low');
       h.el.classList.toggle('sel', s.id === selectedId);
       (h.mesh.material as THREE.MeshBasicMaterial).color.setHex(
-        s.conf === 'low' ? 0xffb020 : 0xff6b35,
+        s.conf === 'low' ? 0xb45309 : 0xe8590c,
       );
     }
 
@@ -378,8 +378,9 @@ export function createViewer(
         new THREE.MeshBasicMaterial({
           color: hex,
           transparent: true,
-          // paint in proportion to how much of the patch is real surface
-          opacity: 0.04 + 0.11 * p.fill,
+          // paint in proportion to how much of the patch is real surface; the fill runs
+          // higher than it did on the dark ground, where far less was needed to register
+          opacity: 0.07 + 0.2 * p.fill,
           side: THREE.DoubleSide,
           depthWrite: false,
         }),
@@ -391,7 +392,7 @@ export function createViewer(
       lg.setAttribute('position', new THREE.BufferAttribute(verts.slice(), 3));
       const line = new THREE.LineLoop(
         lg,
-        new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.9 }),
+        new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.85 }),
       );
       line.renderOrder = 5;
       planeGroup.add(line);
@@ -403,14 +404,21 @@ export function createViewer(
         'position',
         new THREE.BufferAttribute(
           new Float32Array([
-            c[0], c[1], c[2],
-            c[0] + p.n[0] * len, c[1] + p.n[1] * len, c[2] + p.n[2] * len,
+            c[0],
+            c[1],
+            c[2],
+            c[0] + p.n[0] * len,
+            c[1] + p.n[1] * len,
+            c[2] + p.n[2] * len,
           ]),
           3,
         ),
       );
       planeGroup.add(
-        new THREE.Line(ng, new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.55 })),
+        new THREE.Line(
+          ng,
+          new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: 0.55 }),
+        ),
       );
 
       const el = document.createElement('div');
@@ -529,8 +537,17 @@ export function createViewer(
     scene.add(pts);
 
     slots[key] = {
-      obj: pts, name, kept: res.kept, total: res.total, orient: idx, auto,
-      detected: det, alphas: res.alphas ?? null, cov: res.cov ?? null, radius: rad, geom: null,
+      obj: pts,
+      name,
+      kept: res.kept,
+      total: res.total,
+      orient: idx,
+      auto,
+      detected: det,
+      alphas: res.alphas ?? null,
+      cov: res.cov ?? null,
+      radius: rad,
+      geom: null,
     };
     activeSlot = key;
     setActiveSlot(key);
@@ -574,8 +591,14 @@ export function createViewer(
     const s = slots[k];
     if (!s) return null;
     return {
-      name: s.name, kept: s.kept, total: s.total, orient: ORIENTS[s.orient],
-      hasCov: !!s.cov, radius: s.radius, auto: s.auto, geom: s.geom,
+      name: s.name,
+      kept: s.kept,
+      total: s.total,
+      orient: ORIENTS[s.orient],
+      hasCov: !!s.cov,
+      radius: s.radius,
+      auto: s.auto,
+      geom: s.geom,
     };
   }
 

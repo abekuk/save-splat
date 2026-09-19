@@ -1,8 +1,13 @@
 /* Model selection and error classification are the two bits of provider logic with real
  * decisions in them, so they are tested without touching the network. */
-import { test } from 'node:test';
+import { test } from 'vitest';
 import assert from 'node:assert/strict';
-import { pickModel, plainVersion, isQuotaError, describe as describeErr } from '../../../server/swarm/providers/openai';
+import {
+  pickModel,
+  plainVersion,
+  isQuotaError,
+  describe as describeErr,
+} from '../../../server/swarm/providers/openai';
 
 test('plainVersion only accepts bare gpt-N[.M] ids', () => {
   assert.equal(plainVersion('gpt-5'), 5);
@@ -33,7 +38,10 @@ test('pickModel returns null rather than guessing when nothing is recognisable',
 });
 
 test('an exhausted balance is distinguished from a rate limit', () => {
-  const quota = { status: 429, error: { type: 'insufficient_quota', code: 'credit_balance_exhausted' } };
+  const quota = {
+    status: 429,
+    error: { type: 'insufficient_quota', code: 'credit_balance_exhausted' },
+  };
   const limit = { status: 429, error: { type: 'rate_limit_error', message: 'slow down' } };
   assert.equal(isQuotaError(quota), true);
   assert.equal(isQuotaError(limit), false);

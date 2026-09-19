@@ -4,23 +4,14 @@
  * The schemas here are the only way in, and they are deliberately strict — an out-of-range
  * value is a reasoning failure, not something to clamp quietly into the slider range.
  *
- * MERGE NOTE: the ranges duplicate PARAM_SCHEMAS in the zod work landing on main in
- * parallel. When that merges, delete VALUE_SCHEMAS and import PARAM_SCHEMAS instead —
- * they are the same shape on purpose. This is the single reconciliation point.
+ * Ranges come from PARAM_SCHEMAS, which mirrors the sliders — one source of truth for the
+ * UI, the queue import and what an agent is allowed to propose.
  */
 import { z } from 'zod';
+import { PARAM_SCHEMAS } from './schema';
 import type { AgentKey, AgentParam } from './agents';
 
-/** Mirrors the sliders exactly. */
-export const VALUE_SCHEMAS = {
-  n: z.number().int('occupancy is a headcount, so it must be a whole number').min(0).max(50),
-  r: z.number().min(0).max(1),
-  tau: z.number().min(0.5).max(24),
-  type: z.enum(['pancake', 'mixed', 'lean']),
-  conf: z.enum(['low', 'med', 'high']),
-} as const satisfies Record<AgentParam, z.ZodTypeAny>;
-
-export type AgentValue<P extends AgentParam = AgentParam> = z.infer<(typeof VALUE_SCHEMAS)[P]>;
+export type AgentValue<P extends AgentParam = AgentParam> = z.infer<(typeof PARAM_SCHEMAS)[P]>;
 
 /** Self-reported certainty. Distinct from the `conf` parameter, which is a site-level
  *  operator flag — this one is about the agent's own read of its evidence. */
@@ -41,7 +32,7 @@ export const SelfConfidence = z.enum(['low', 'med', 'high']);
 export function proposalSchemaFor(param: AgentParam) {
   return z.object({
     abstain: z.boolean(),
-    value: z.union([VALUE_SCHEMAS[param], z.null()]),
+    value: z.union([PARAM_SCHEMAS[param], z.null()]),
     self_confidence: SelfConfidence,
     rationale: z.string().min(1).max(RATIONALE_MAX),
     evidence_used: z.array(z.string().min(1).max(200)).max(CITATIONS_MAX),
@@ -164,7 +155,8 @@ export function resolvePath(root: unknown, path: string): { found: boolean; valu
     if (cur === null || cur === undefined) return { found: false, value: undefined };
     if (Array.isArray(cur)) {
       const i = Number(part);
-      if (!Number.isInteger(i) || i < 0 || i >= cur.length) return { found: false, value: undefined };
+      if (!Number.isInteger(i) || i < 0 || i >= cur.length)
+        return { found: false, value: undefined };
       cur = cur[i];
       continue;
     }

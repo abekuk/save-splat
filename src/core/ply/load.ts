@@ -110,7 +110,7 @@ export function readAll(file: File, onProg: (frac: number) => void): Promise<Arr
 export async function loadPlyFile(file: File, cb: LoadCallbacks): Promise<void> {
   cb.onProgress({ phase: 'reading', frac: 0, message: 'opening …' });
 
-  let info: PlyHeaderInfo | null = null;
+  let info: PlyHeaderInfo | null;
   try {
     info = sniffPLY(await readSlice(file.slice(0, SNIFF_BYTES)));
   } catch (err) {
@@ -118,7 +118,9 @@ export async function loadPlyFile(file: File, cb: LoadCallbacks): Promise<void> 
     return;
   }
   if (!info) {
-    cb.onFail(`no "end_header" in the first ${fmtBytes(SNIFF_BYTES)} — this is not a .ply, or it is truncated`);
+    cb.onFail(
+      `no "end_header" in the first ${fmtBytes(SNIFF_BYTES)} — this is not a .ply, or it is truncated`,
+    );
     return;
   }
 
@@ -159,7 +161,11 @@ export async function loadPlyFile(file: File, cb: LoadCallbacks): Promise<void> 
     return;
   }
 
-  cb.onProgress({ phase: 'parsing', frac: 0.93, message: `parsing ${fmtInt(info.count)} vertices …` });
+  cb.onProgress({
+    phase: 'parsing',
+    frac: 0.93,
+    message: `parsing ${fmtInt(info.count)} vertices …`,
+  });
   // let the overlay actually paint before the synchronous parse takes the main thread
   await new Promise<void>((r) => afterPaint(r));
 

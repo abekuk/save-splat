@@ -64,7 +64,12 @@ async function runAgent(
     // and an out-of-range value is reported as the reasoning failure it is.
     const parsed = parseRawProposal(agent.param, raw);
     if (!parsed.ok) {
-      return { ...base, error: `rejected the proposal — ${parsed.error}`, usage, ms: Date.now() - started };
+      return {
+        ...base,
+        error: `rejected the proposal — ${parsed.error}`,
+        usage,
+        ms: Date.now() - started,
+      };
     }
 
     const verdicts = verify({ key, param: agent.param, proposal: parsed.value, payload, upstream });

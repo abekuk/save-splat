@@ -6,21 +6,21 @@ import type { SlotKey } from '@/types';
 
 export default function TopBar({
   viewer,
-  ready,
   onLoadFile,
   onGeometry,
+  onExit,
 }: {
   viewer: Viewer | null;
-  ready: boolean;
   onLoadFile: (f: File) => void;
   onGeometry: () => void;
+  onExit: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const s = useAppState();
   // slotsVersion is read so this re-renders when viewer-owned slot state changes
   void s.slotsVersion;
 
-  const active = ready && viewer ? viewer.getActiveSlot() : 'A';
+  const active = viewer ? viewer.getActiveSlot() : 'A';
 
   const synthetic = (): void => {
     if (!viewer) return;
@@ -51,9 +51,9 @@ export default function TopBar({
 
   return (
     <div id="topbar">
-      <div className="brand">
-        RUBBLE <span>/ triage</span>
-      </div>
+      <button className="brand" onClick={onExit} title="Back to the start">
+        savesplat
+      </button>
 
       <button className="btn" onClick={() => fileRef.current?.click()}>
         LOAD .PLY
@@ -96,12 +96,20 @@ export default function TopBar({
       <button className="btn" onClick={() => viewer?.resetView()}>
         RESET VIEW
       </button>
-      <button className="btn" title="Cycle the up-axis convention: Y-up, Y-down, Z-up, Z-down" onClick={upAxis}>
+      <button
+        className="btn"
+        title="Cycle the up-axis convention: Y-up, Y-down, Z-up, Z-down"
+        onClick={upAxis}
+      >
         UP-AXIS<em>f</em>
       </button>
 
       <span className="sep" />
-      <button className="btn" title="Fit planes, verticality and debris volume" onClick={onGeometry}>
+      <button
+        className="btn"
+        title="Fit planes, verticality and debris volume"
+        onClick={onGeometry}
+      >
         GEOMETRY<em>g</em>
       </button>
       <button

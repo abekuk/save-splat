@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { AppSnapshot } from '@/core/snapshot';
-import { SWARM_AGENTS, agentByKey, coerce } from '@/core/swarm/agents';
+import { SWARM_AGENTS, agentByKey, parseProposal } from '@/core/swarm/agents';
 import type { AgentParam, ProposalValue } from '@/core/swarm/agents';
 import { buildSwarmContext, copyText } from '@/core/swarm/context';
 import { runSwarmRemote, swarmStatus } from '@/core/swarm/client';
@@ -70,14 +70,17 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             `no such agent "${key}" — try one of: ${SWARM_AGENTS.map((x) => x.key).join(', ')}`,
           );
         }
-        const v = coerce(a.param, value);
-        if (v === null) {
-          throw new Error(`value ${JSON.stringify(value)} is not valid for ${a.label}`);
+        const parsed = parseProposal(a.param, value);
+        if (!parsed.ok) {
+          throw new Error(`${a.label}: ${parsed.error} (received ${JSON.stringify(value)})`);
         }
         setState((st) => ({
-          proposals: { ...st.proposals, [key]: { value: v, rationale: rationale ?? '', at: new Date() } },
+          proposals: {
+            ...st.proposals,
+            [key]: { value: parsed.value, rationale: rationale ?? '', at: new Date() },
+          },
         }));
-        return v;
+        return parsed.value;
       },
       clear: () => setState({ proposals: {} }),
       log: () => getState().overrideLog.slice(),
@@ -134,18 +137,6 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
 
   return (
     <>
-      <div className="h">AGENT SWARM</div>
-      <p>
-        One agent per ranking parameter, each with its own evidence source and a cheap verifier. The
-        geometry layer is the evidence substrate — the agents read the measured planes, drift bands
-        and debris volume, not the point cloud.
-      </p>
-      <div className="warn" style={{ marginBottom: 12 }}>
-        <b>Assisted assessment, not autonomous dispatch.</b> An agent proposes; the operator applies.
-        Sliders stay operator-set, and every override is recorded in the log below.
-      </div>
-
-      <div className="ghead">CONTEXT HANDED TO EVERY AGENT</div>
       <div className="sctx">
         <div>
           SITE&nbsp;&nbsp;
@@ -155,7 +146,9 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
               {site.r.toFixed(2)} τ {site.tau.toFixed(1)}
             </>
           ) : (
-            <><b>none selected</b> — agents have no site to reason about</>
+            <>
+              <b>none selected</b> — agents have no site to reason about
+            </>
           )}
         </div>
         <div>
@@ -166,7 +159,9 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
               {snap.slot.hasCov ? 'yes' : 'no'} · 1 unit = {snap.metresPerUnit} m
             </>
           ) : (
-            <><b>slot {snap.slotKey} empty</b></>
+            <>
+              <b>slot {snap.slotKey} empty</b>
+            </>
           )}
         </div>
         <div>
@@ -178,7 +173,9 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
               {(snap.geom.residualFrac * 100).toFixed(1)}%
             </>
           ) : (
-            <><b>not extracted</b> — press g to give the agents evidence</>
+            <>
+              <b>not extracted</b> — press g to give the agents evidence
+            </>
           )}
         </div>
         <div style={{ marginTop: 6, color: 'var(--dim)' }}>
@@ -187,11 +184,7 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
         </div>
       </div>
 
-      <div className="ghead">OPERATOR NOTES — THE ONLY SOURCE FOR OCCUPANCY</div>
-      <div className="gnote" style={{ marginBottom: 6 }}>
-        Nothing in a scan evidences how many people are inside. Anything you know from witnesses,
-        rosters, building use or time of day goes here; the RECORDS agent abstains without it.
-      </div>
+      <div className="ghead">OPERATOR NOTES</div>
       <textarea
         className="snotes"
         value={notes}
@@ -221,7 +214,8 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             void copyText(t).then((ok) =>
               ok
                 ? setStatus(`agent context copied — ${fmtInt(t.length)} chars`)
-                : (console.log(t), setStatus('clipboard refused — the payload is on the console instead')),
+                : (console.warn(t),
+                  setStatus('clipboard refused — the payload is on the console instead')),
             );
           }}
         >
@@ -272,7 +266,6 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
             <div className="q">
               operator value now: <b>{paramText(site, a.param)}</b>
             </div>
-            <div className="rd">EVIDENCE · {a.evidence}</div>
 
             <div className={res ? 'sverdict filled' : 'sverdict'}>
               {!res ? (
@@ -340,28 +333,23 @@ export default function SwarmTab({ snap }: { snap: AppSnapshot }) {
         ))
       )}
 
-      <div className="ghead">WHAT THIS IS NOT</div>
-      <ul className="lim">
-        <li>
-          <b>q — P(trapped alive) has no agent.</b> Nothing in an exterior scan evidences whether an
-          occupant is alive, so it is left wholly to the operator rather than given a
-          plausible-looking number. The gap is deliberate.
-        </li>
-        <li>
-          A proposal is inert until an operator applies it. Applying is an operator decision, logged
-          with the value it replaced.
-        </li>
-        <li>
-          A verifier is a cheap disagreement check, not a proof. <b>Unverified is not a pass</b> — it
-          means the evidence to check that claim is not in the payload at all, which is the honest
-          state for extraction probability (no route network) and occupancy (no registry).
-        </li>
-        <li>
-          Agents read the derived geometry, never the raw cloud. They inherit every limit of the
-          extraction: exterior surfaces only, debris volume assuming solid piles, and uncalibrated
-          scale unless you set it.
-        </li>
-      </ul>
+      <details className="lim-details">
+        <summary>what this is not</summary>
+        <ul className="lim">
+          <li>
+            <b>q — P(trapped alive) has no agent.</b> Nothing in an exterior scan evidences whether
+            an occupant is alive, so it is left wholly to the operator. The gap is deliberate.
+          </li>
+          <li>A proposal is inert until applied. Applying is logged with the value it replaced.</li>
+          <li>
+            <b>Unverified is not a pass</b> — the evidence to check that claim is not in the payload
+            at all, which is the honest state for extraction probability and occupancy.
+          </li>
+          <li>
+            Agents read the derived geometry, never the raw cloud, and inherit all its limits.
+          </li>
+        </ul>
+      </details>
     </>
   );
 }

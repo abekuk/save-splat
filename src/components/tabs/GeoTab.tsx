@@ -1,6 +1,6 @@
 import type { Viewer } from '@/scene/viewer';
 import type { AppSnapshot } from '@/core/snapshot';
-import { CLS_CSS, wellSupported } from '@/core/geometry/extract';
+import { CLS_CSS, DRIFT_BANDS, wellSupported } from '@/core/geometry/extract';
 import { mArea, mLen, mVol } from '@/core/units';
 import { clamp01, fmtInt, fmtNum } from '@/core/util';
 import { setState, useAppState } from '@/state/store';
@@ -9,9 +9,17 @@ import type { Plane } from '@/types';
 const planeCss = (p: Plane): string => (p.cls === 'wall' && p.band ? p.band.css : CLS_CSS[p.cls]);
 
 function PlaneRow({
-  p, index, mpu, selected, onClick,
+  p,
+  index,
+  mpu,
+  selected,
+  onClick,
 }: {
-  p: Plane; index: number; mpu: number; selected: boolean; onClick: () => void;
+  p: Plane;
+  index: number;
+  mpu: number;
+  selected: boolean;
+  onClick: () => void;
 }) {
   const css = planeCss(p);
   const sub =
@@ -21,7 +29,9 @@ function PlaneRow({
   return (
     <div className={selected ? 'grow sel' : 'grow'} data-i={index} onClick={onClick}>
       <div className="top">
-        <span className="tag" style={{ borderColor: css, color: css }}>{p.label}</span>
+        <span className="tag" style={{ borderColor: css, color: css }}>
+          {p.label}
+        </span>
         <span className="nm">{sub}</span>
         <span className="num" style={{ color: css }}>
           {p.cls === 'wall' && p.drift != null
@@ -39,9 +49,13 @@ function PlaneRow({
 }
 
 export default function GeoTab({
-  viewer, snap, onGeometry,
+  viewer,
+  snap,
+  onGeometry,
 }: {
-  viewer: Viewer | null; snap: AppSnapshot; onGeometry: () => void;
+  viewer: Viewer | null;
+  snap: AppSnapshot;
+  onGeometry: () => void;
 }) {
   const s = useAppState();
   const g = snap.geom;
@@ -69,7 +83,9 @@ export default function GeoTab({
             angles, and debris volume — measured facts rather than a mesh.
             <br />
             <br />
-            <button className="btn" onClick={onGeometry}>RUN GEOMETRY</button>
+            <button className="btn" onClick={onGeometry}>
+              RUN GEOMETRY
+            </button>
           </div>
         )}
       </>
@@ -94,10 +110,22 @@ export default function GeoTab({
   return (
     <>
       <div className="gsum">
-        <div><span>PLANES</span><b>{g.planes.length}</b></div>
-        <div><span>WALLS</span><b>{walls.length}</b></div>
-        <div><span>SLABS</span><b>{slabs.length}</b></div>
-        <div><span>INCLINED</span><b>{incl.length}</b></div>
+        <div>
+          <span>PLANES</span>
+          <b>{g.planes.length}</b>
+        </div>
+        <div>
+          <span>WALLS</span>
+          <b>{walls.length}</b>
+        </div>
+        <div>
+          <span>SLABS</span>
+          <b>{slabs.length}</b>
+        </div>
+        <div>
+          <span>INCLINED</span>
+          <b>{incl.length}</b>
+        </div>
       </div>
       <div className="gsum">
         <div>
@@ -106,15 +134,24 @@ export default function GeoTab({
             {worst?.drift != null ? `${(worst.drift * 100).toFixed(2)}%` : '—'}
           </b>
         </div>
-        <div><span>DEBRIS VOL</span><b>{fmtNum(mVol(g.debris.totalVolume, mpu))} m³</b></div>
-        <div><span>UNASSIGNED</span><b>{Math.round(g.residualFrac * 100)}%</b></div>
-        <div><span>FIT TIME</span><b>{g.ms} ms</b></div>
+        <div>
+          <span>DEBRIS VOL</span>
+          <b>{fmtNum(mVol(g.debris.totalVolume, mpu))} m³</b>
+        </div>
+        <div>
+          <span>UNASSIGNED</span>
+          <b>{Math.round(g.residualFrac * 100)}%</b>
+        </div>
+        <div>
+          <span>FIT TIME</span>
+          <b>{g.ms} ms</b>
+        </div>
       </div>
 
       <div className="gnote">
-        Worst drift counts only walls holding at least 1% of the cloud at 25% fill or better; thinner
-        fragments still appear in the list, with their support and fill shown. {fmtInt(g.workingSet)}{' '}
-        points fitted · epsilon from{' '}
+        Worst drift counts only walls holding at least 1% of the cloud at 25% fill or better;
+        thinner fragments still appear in the list, with their support and fill shown.{' '}
+        {fmtInt(g.workingSet)} points fitted · epsilon from{' '}
         {g.usedCovariance
           ? 'each Gaussian’s own extent along the normal (n′Σn)'
           : 'scene scale — this cloud carries no scale_*/rot_*, so there is no per-point covariance'}
@@ -123,7 +160,11 @@ export default function GeoTab({
       <div className="scalebox">
         <label htmlFor="f-scale">1 SCAN UNIT =</label>
         <input
-          id="f-scale" type="number" min={0.0001} step={0.01} value={mpu}
+          id="f-scale"
+          type="number"
+          min={0.0001}
+          step={0.01}
+          value={mpu}
           onChange={(e) => {
             const v = parseFloat(e.target.value);
             setState({ metresPerUnit: isFinite(v) && v > 0 ? v : 1 });
@@ -132,26 +173,38 @@ export default function GeoTab({
         <label>METRES</label>
       </div>
       <div className="gnote">
-        Angles and drift ratios are scale-free and hold whatever this is set to. Areas and volumes do
-        not — they are only metric if this figure is right. ARKit-derived exports (Scaniverse,
+        Angles and drift ratios are scale-free and hold whatever this is set to. Areas and volumes
+        do not — they are only metric if this figure is right. ARKit-derived exports (Scaniverse,
         Polycam) are usually already 1 unit = 1 m.
       </div>
 
       <div className="legend">
-        <span><i style={{ background: '#ff3b30' }} />SEVERE ≥2%</span>
-        <span><i style={{ background: '#ff8a1f' }} />MODERATE 1–2%</span>
-        <span><i style={{ background: '#ffc21f' }} />MINOR 0.5–1%</span>
-        <span><i style={{ background: '#7d8896' }} />COSMETIC &lt;0.5%</span>
-        <span><i style={{ background: '#4a9eff' }} />SLAB</span>
-        <span><i style={{ background: '#35d0c0' }} />INCLINED</span>
+        {[...DRIFT_BANDS].reverse().map((b) => (
+          <span key={b.name}>
+            <i style={{ background: b.css }} />
+            {b.name}
+          </span>
+        ))}
+        <span>
+          <i style={{ background: CLS_CSS.slab }} />
+          SLAB
+        </span>
+        <span>
+          <i style={{ background: CLS_CSS.incline }} />
+          INCLINED
+        </span>
       </div>
 
       <div className="ghead">WALLS — VERTICALITY</div>
       {!sortedWalls.length && <div className="gempty">No near-vertical planes found.</div>}
       {sortedWalls.map((p) => (
         <PlaneRow
-          key={p.label} p={p} index={g.planes.indexOf(p)} mpu={mpu}
-          selected={s.selectedPlane === g.planes.indexOf(p)} onClick={() => pick(p)}
+          key={p.label}
+          p={p}
+          index={g.planes.indexOf(p)}
+          mpu={mpu}
+          selected={s.selectedPlane === g.planes.indexOf(p)}
+          onClick={() => pick(p)}
         />
       ))}
 
@@ -159,8 +212,12 @@ export default function GeoTab({
       {!rest.length && <div className="gempty">No horizontal or inclined planes found.</div>}
       {rest.map((p) => (
         <PlaneRow
-          key={p.label} p={p} index={g.planes.indexOf(p)} mpu={mpu}
-          selected={s.selectedPlane === g.planes.indexOf(p)} onClick={() => pick(p)}
+          key={p.label}
+          p={p}
+          index={g.planes.indexOf(p)}
+          mpu={mpu}
+          selected={s.selectedPlane === g.planes.indexOf(p)}
+          onClick={() => pick(p)}
         />
       ))}
 
@@ -176,7 +233,9 @@ export default function GeoTab({
       {g.debris.clusters.map((c) => (
         <div className="grow deb" key={c.id}>
           <div className="top">
-            <span className="tag" style={{ borderColor: '#8b93a1', color: '#8b93a1' }}>D{c.id}</span>
+            <span className="tag" style={{ borderColor: 'var(--dim)', color: 'var(--dim)' }}>
+              D{c.id}
+            </span>
             <span className="nm">debris pile {c.id}</span>
             <span className="num">{fmtNum(mVol(c.volume, mpu))} m³</span>
           </div>
@@ -198,8 +257,8 @@ export default function GeoTab({
           each pile is solid down to the ground plane — overhangs and interior voids are invisible.
         </li>
         <li>
-          Plane extent is trimmed to the 1st–99th percentile of its own points; <b>fill%</b> says how
-          much of that rectangle is really surface.
+          Plane extent is trimmed to the 1st–99th percentile of its own points; <b>fill%</b> says
+          how much of that rectangle is really surface.
         </li>
         <li>These are inputs an assessor reads. They do not move the sliders by themselves.</li>
       </ul>

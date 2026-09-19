@@ -30,7 +30,8 @@ export function getReasoner(): Reasoner {
   }
   if (which === 'anthropic') {
     const key = process.env.ANTHROPIC_API_KEY;
-    if (!key) throw new MissingKeyError('SWARM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set.');
+    if (!key)
+      throw new MissingKeyError('SWARM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set.');
     return new AnthropicReasoner(key);
   }
   throw new MissingKeyError(

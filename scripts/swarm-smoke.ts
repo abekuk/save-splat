@@ -84,7 +84,9 @@ async function main(): Promise<void> {
   const context = buildSwarmContext(snap) as unknown as Record<string, unknown>;
   const payload = { ...context, operator_notes: notes };
   const chars = JSON.stringify(payload).length;
-  process.stdout.write(`context payload: ${chars} chars, notes: ${notes ? `"${notes}"` : 'none'}\n`);
+  process.stdout.write(
+    `context payload: ${chars} chars, notes: ${notes ? `"${notes}"` : 'none'}\n`,
+  );
 
   if (dry) {
     process.stdout.write('\n--dry: payload only, no API call\n\n');

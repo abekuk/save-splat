@@ -126,7 +126,8 @@ function volumeCheck(v: AgentValue | null, payload: Record<string, unknown>): Ve
     return {
       check: 'clearance-rate',
       status: 'unverified',
-      detail: 'scan scale is uncalibrated, so volume is in scan units and the rate is not checkable',
+      detail:
+        'scan scale is uncalibrated, so volume is in scan units and the rate is not checkable',
     };
   }
   if (vol < 0.5) {
@@ -191,7 +192,8 @@ function recordsCheck(p: RawProposal, payload: Record<string, unknown>): Verdict
     return {
       check: 'source-present',
       status: 'fail',
-      detail: 'proposed an occupancy with no operator notes in the payload — nothing else evidences it',
+      detail:
+        'proposed an occupancy with no operator notes in the payload — nothing else evidences it',
     };
   }
   if (!p.evidence_used.some((e) => e.startsWith('operator_notes'))) {

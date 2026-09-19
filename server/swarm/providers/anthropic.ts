@@ -27,7 +27,7 @@ export class AnthropicReasoner implements Reasoner {
       this.resolved = pinned;
       return pinned;
     }
-    let ids: string[] = [];
+    let ids: string[];
     try {
       const list = await this.client.models.list({ limit: 100 });
       ids = list.data.map((m) => m.id);
@@ -49,7 +49,8 @@ export class AnthropicReasoner implements Reasoner {
 
   async complete(req: ReasonerRequest): Promise<ReasonerResponse> {
     const model = await this.model();
-    const effort = (process.env.SWARM_EFFORT ?? 'high') as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+    const effort = (process.env.SWARM_EFFORT ?? 'high') as
+      'low' | 'medium' | 'high' | 'xhigh' | 'max';
     try {
       const response = await this.client.messages.parse({
         model,
@@ -79,7 +80,10 @@ export class AnthropicReasoner implements Reasoner {
 }
 
 function isRetryable(err: unknown): boolean {
-  return err instanceof Anthropic.RateLimitError || (err instanceof Anthropic.APIError && (err.status ?? 0) >= 500);
+  return (
+    err instanceof Anthropic.RateLimitError ||
+    (err instanceof Anthropic.APIError && (err.status ?? 0) >= 500)
+  );
 }
 
 function describe(err: unknown): string {
