@@ -17,11 +17,11 @@
       "requirePath": "/Users/thomaslenh/.npm/_npx/69f9afb961c37556/node_modules/@vercel/node/dist/index",
       "apiVersion": 3,
       "use": "@vercel/node",
-      "src": "api/swarm/review.ts",
+      "src": "api/swarm/review.js",
       "config": {
         "zeroConfig": true,
         "functions": {
-          "api/**/*.ts": {
+          "api/**/*.js": {
             "maxDuration": 60
           }
         }
@@ -32,11 +32,11 @@
       "requirePath": "/Users/thomaslenh/.npm/_npx/69f9afb961c37556/node_modules/@vercel/node/dist/index",
       "apiVersion": 3,
       "use": "@vercel/node",
-      "src": "api/swarm/run.ts",
+      "src": "api/swarm/room.js",
       "config": {
         "zeroConfig": true,
         "functions": {
-          "api/**/*.ts": {
+          "api/**/*.js": {
             "maxDuration": 60
           }
         }
@@ -47,11 +47,26 @@
       "requirePath": "/Users/thomaslenh/.npm/_npx/69f9afb961c37556/node_modules/@vercel/node/dist/index",
       "apiVersion": 3,
       "use": "@vercel/node",
-      "src": "api/swarm/status.ts",
+      "src": "api/swarm/run.js",
       "config": {
         "zeroConfig": true,
         "functions": {
-          "api/**/*.ts": {
+          "api/**/*.js": {
+            "maxDuration": 60
+          }
+        }
+      }
+    },
+    {
+      "require": "@vercel/node",
+      "requirePath": "/Users/thomaslenh/.npm/_npx/69f9afb961c37556/node_modules/@vercel/node/dist/index",
+      "apiVersion": 3,
+      "use": "@vercel/node",
+      "src": "api/swarm/status.js",
+      "config": {
+        "zeroConfig": true,
+        "functions": {
+          "api/**/*.js": {
             "maxDuration": 60
           }
         }

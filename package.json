@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/bundle-functions.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
@@ -17,7 +17,8 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "doctor": "tsx scripts/doctor.ts",
     "migrate": "tsx scripts/migrate.ts",
-    "swarm:smoke": "tsx --env-file-if-exists=.env.local scripts/swarm-smoke.ts"
+    "swarm:smoke": "tsx --env-file-if-exists=.env.local scripts/swarm-smoke.ts",
+    "bundle:functions": "node scripts/bundle-functions.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",
