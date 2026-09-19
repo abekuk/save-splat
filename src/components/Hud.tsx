@@ -143,11 +143,15 @@ export default function Hud({
         <Btn icon={I.home} label="Back to the start" onClick={onExit} />
         <span className="hud-sep" />
 
-        <Btn icon={I.upload} label="Load .ply" onClick={() => fileRef.current?.click()} />
+        <Btn
+          icon={I.upload}
+          label="Load a scan (.ply, .glb)"
+          onClick={() => fileRef.current?.click()}
+        />
         <input
           ref={fileRef}
           type="file"
-          accept=".ply,application/octet-stream"
+          accept=".ply,.glb,.gltf,model/gltf-binary,application/octet-stream"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];

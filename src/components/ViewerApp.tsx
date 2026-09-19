@@ -4,6 +4,7 @@ import type { Viewer } from '@/scene/viewer';
 import { extractGeometry } from '@/core/geometry/extract';
 import { ranked } from '@/core/ranking';
 import { loadPlyFile } from '@/core/ply/load';
+import { isMeshFile, loadMeshFile } from '@/core/mesh/load';
 import { makeSynthetic } from '@/core/synthetic';
 import {
   addSite,
@@ -88,7 +89,8 @@ export default function ViewerApp({
         loadFile: `${file.name}`,
         loading: { phase: 'reading', frac: 0, message: 'opening …' },
       });
-      void loadPlyFile(file, {
+      const mesh = isMeshFile(file.name);
+      void (mesh ? loadMeshFile : loadPlyFile)(file, {
         onProgress: (p) => setState({ loading: p }),
         onDone: (res) => {
           try {
@@ -107,8 +109,12 @@ export default function ViewerApp({
           setStatus(`load failed: ${msg}`);
           window.alert(
             `Could not load "${file.name}".\n\n${msg}\n\n` +
-              'Rubble reads point/splat .ply files (Scaniverse, Polycam, gaussian-splat exports). ' +
-              'A mesh-only .ply with no vertex coordinates, or a file that is not a .ply at all, will fail here.',
+              (mesh
+                ? 'Meshes are read from .glb/.gltf and sampled into a point cloud. Compressed ' +
+                  'geometry (Draco, meshopt) needs a decoder that is not bundled — re-export ' +
+                  'without compression, or send the .ply.'
+                : 'Point and splat clouds are read from .ply (Scaniverse, Polycam, gaussian-splat ' +
+                  'exports). For a mesh, export .glb instead.'),
           );
         },
         confirmLarge: (msg) => window.confirm(msg),
