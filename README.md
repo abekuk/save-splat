@@ -6,9 +6,10 @@
 
 ## Demo Images
 
-<img width="600" height="300" alt="image" src="https://github.com/user-attachments/assets/6f97cab7-1e44-46be-8734-a54d1363d40f" />
-<img width="600" height="300" alt="image" src="https://github.com/user-attachments/assets/63403229-23e3-46d3-856f-51857aaf6234" />
-<img width="600" height="300" alt="image" src="https://github.com/user-attachments/assets/07a5dd6b-5d92-4e97-abfd-b89f8c11db5f" />
+<img width="600" height="300" alt="Screenshot 2026-09-20 142806" src="https://github.com/user-attachments/assets/81ec4f73-fd1b-483c-8a8c-8a2d6dcc0ac2" />
+<img width="600" height="300" alt="Screenshot 2026-09-20 142625" src="https://github.com/user-attachments/assets/6d226392-1c9d-4f8b-ba9f-670fd3e8e1ec" />
+<img width="600" height="300" alt="Screenshot 2026-09-20 142708" src="https://github.com/user-attachments/assets/983b2136-499f-4346-9ea6-fc52dc83d0fd" />
+<img width="600" height="300" alt="Screenshot 2026-09-20 142741" src="https://github.com/user-attachments/assets/f8aa2c1c-aac5-4a88-a4f8-113fcb144044" />
 
 ## What it Does
 
