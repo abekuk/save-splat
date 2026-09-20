@@ -162,24 +162,31 @@ export default function ViewerApp({
         return;
       }
       if (getState().geoStage === 'ransac' || getState().geoStage === 'prep') return;
+      const targetSlot = v.getActiveSlot();
+      const targetRevision = v.getSlotRevision(targetSlot);
+      if (targetRevision === null) return;
       setState({
         geoStage: 'prep',
         geoProgress: null,
         selectedPlane: -1,
         ...(focus ? { tab: 'geo' as const } : {}),
       });
-      v.setGeom(null);
+      v.setGeomFor(targetSlot, targetRevision, null);
       extractGeometry(
         input,
         (planes, stage, frac) =>
           setState({ geoStage: 'ransac', geoProgress: { planes, stage, frac } }),
         (g) => {
-          v.setGeom(g);
+          if (!v.setGeomFor(targetSlot, targetRevision, g)) {
+            setState({ geoStage: 'idle', geoProgress: null });
+            setStatus('geometry discarded — the source scan was replaced while measuring');
+            return;
+          }
           setState({ geoStage: 'done', geoProgress: null });
           const walls = g.planes.filter((p) => p.cls === 'wall');
           const worst = walls.reduce((m, p) => Math.max(m, p.drift ?? 0), 0);
           setStatus(
-            `${g.planes.length} planes in ${g.ms} ms · ${walls.length} wall${walls.length === 1 ? '' : 's'}` +
+            `slot ${targetSlot}: ${g.planes.length} planes in ${g.ms} ms · ${walls.length} wall${walls.length === 1 ? '' : 's'}` +
               (walls.length ? ` · worst drift ${(worst * 100).toFixed(1)}%` : ''),
           );
         },

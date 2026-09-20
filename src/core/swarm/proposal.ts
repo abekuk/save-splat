@@ -152,6 +152,7 @@ export function resolvePath(root: unknown, path: string): { found: boolean; valu
     .replace(/\[(\d+)\]/g, '.$1')
     .split('.')
     .filter(Boolean);
+  if (parts.length === 0) return { found: false, value: undefined };
   let cur: unknown = root;
   for (const part of parts) {
     if (cur === null || cur === undefined) return { found: false, value: undefined };
@@ -163,7 +164,8 @@ export function resolvePath(root: unknown, path: string): { found: boolean; valu
       continue;
     }
     if (typeof cur !== 'object') return { found: false, value: undefined };
-    if (!(part in (cur as Record<string, unknown>))) return { found: false, value: undefined };
+    if (!Object.prototype.hasOwnProperty.call(cur, part))
+      return { found: false, value: undefined };
     cur = (cur as Record<string, unknown>)[part];
   }
   return { found: true, value: cur };

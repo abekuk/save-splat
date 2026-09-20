@@ -28,6 +28,8 @@ export interface ViewerCallbacks {
 }
 
 interface SlotInternal {
+  /** Changes whenever this scan or its orientation changes, so async work cannot land stale. */
+  revision: number;
   /** THREE.Points for a cloud, a glTF scene graph for a mesh */
   obj: THREE.Object3D;
   kind: 'points' | 'mesh';
@@ -84,6 +86,7 @@ export function createViewer(
 
   const slots: Record<SlotKey, SlotInternal | null> = { A: null, B: null };
   let activeSlot: SlotKey = 'A';
+  let nextSlotRevision = 1;
 
   const markerGeo = new THREE.SphereGeometry(1, 12, 10);
   const markers = new Map<number, MarkerHandle>();
@@ -638,6 +641,7 @@ export function createViewer(
     scene.add(pts);
 
     slots[key] = {
+      revision: nextSlotRevision++,
       obj: pts,
       kind: 'points',
       positions: res.positions,
@@ -701,6 +705,7 @@ export function createViewer(
     scene.add(root);
 
     slots[key] = {
+      revision: nextSlotRevision++,
       obj: root,
       kind: 'mesh',
       positions,
@@ -737,6 +742,7 @@ export function createViewer(
       cb.onStatus(`slot ${activeSlot} is empty — nothing to reorient`);
       return null;
     }
+    s.revision = nextSlotRevision++;
     s.orient = (s.orient + 1) % ORIENTS.length;
     // drop any auto-levelling: the operator is taking over
     s.obj.quaternion.identity();
@@ -784,11 +790,14 @@ export function createViewer(
     };
   }
 
-  function setGeom(g: GeometryResult | null): void {
-    const s = slots[activeSlot];
-    if (s) s.geom = g;
-    refreshOverlay();
+  /** Commit geometry only to the exact scan that produced the extraction input. */
+  function setGeomFor(key: SlotKey, revision: number, g: GeometryResult | null): boolean {
+    const s = slots[key];
+    if (!s || s.revision !== revision) return false;
+    s.geom = g;
+    if (key === activeSlot) refreshOverlay();
     cb.onSlotsChanged();
+    return true;
   }
 
   /* ---------------- render loop ---------------- */
@@ -872,12 +881,13 @@ export function createViewer(
     frameSlot,
     cycleOrientation,
     getExtractInput,
-    setGeom,
+    setGeomFor,
     refreshOverlay,
     focusPlane,
     syncSites,
     setMarkMode,
     getSlot: publicSlot,
+    getSlotRevision: (k: SlotKey): number | null => slots[k]?.revision ?? null,
     getActiveSlot: (): SlotKey => activeSlot,
     isMarkMode: (): boolean => markMode,
     flyTo: (p: Vec3): void => {

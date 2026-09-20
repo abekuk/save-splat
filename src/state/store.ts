@@ -10,7 +10,7 @@ import type { LoadProgress } from '@/core/ply/load';
 import type { OverrideEntry, Proposal } from '@/core/swarm/agents';
 import type { SwarmRunResult } from '@/core/swarm/proposal';
 import type { ReviewResult, RoomRunResult, SwarmStatus } from '@/core/swarm/client';
-import type { GeoStage, Site, Vec3 } from '@/types';
+import type { GeoStage, Site, SlotKey, Vec3 } from '@/types';
 
 export type TabKey = 'assess' | 'geo' | 'swarm' | 'model';
 
@@ -33,6 +33,8 @@ export interface AppState {
   swarm: {
     run: SwarmRunResult | null;
     vision: RoomRunResult | null;
+    /** Exact scan the vision result describes. */
+    visionSource: { slot: SlotKey; revision: number } | null;
     visionBusy: boolean;
     busy: boolean;
     notes: string;
@@ -66,6 +68,7 @@ let state: AppState = {
   swarm: {
     run: null,
     vision: null,
+    visionSource: null,
     visionBusy: false,
     busy: false,
     notes: '',

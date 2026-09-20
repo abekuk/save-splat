@@ -49,12 +49,19 @@ export default function SwarmTab({
   onGeometry: (focus?: boolean) => void;
 }) {
   const s = useAppState();
-  const { notes, status, vision: room, visionBusy: busy } = s.swarm;
+  const { notes, status, visionBusy: busy } = s.swarm;
+  const currentRevision = viewer?.getSlotRevision(snap.slotKey) ?? null;
+  const source = s.swarm.visionSource;
+  const room =
+    source && source.slot === snap.slotKey && source.revision === currentRevision
+      ? s.swarm.vision
+      : null;
+  const verifiedReport = room?.verified ? room.report : null;
 
   const verdict = snap.geom ? buildVerdict(snap.geom.planes) : null;
   const condition =
     room || verdict
-      ? buildCondition(verdict?.level ?? 'unknown', verdict?.detail ?? '', room?.report ?? null)
+      ? buildCondition(verdict?.level ?? 'unknown', verdict?.detail ?? '', verifiedReport)
       : null;
 
   useEffect(() => {
@@ -65,7 +72,15 @@ export default function SwarmTab({
   /* One action: fit the planes if they are not fitted, render the room, read the surfaces. */
   const capture = (): void => {
     if (!viewer || busy) return;
-    setState((x) => ({ swarm: { ...x.swarm, visionBusy: true } }));
+    const targetSlot = viewer.getActiveSlot();
+    const targetRevision = viewer.getSlotRevision(targetSlot);
+    if (targetRevision === null) return;
+    const targetStillCurrent = (): boolean =>
+      viewer.getActiveSlot() === targetSlot &&
+      viewer.getSlotRevision(targetSlot) === targetRevision;
+    setState((x) => ({
+      swarm: { ...x.swarm, vision: null, visionSource: null, visionBusy: true },
+    }));
 
     void (async () => {
       try {
@@ -79,6 +94,11 @@ export default function SwarmTab({
           if (!ok || getState().geoStage === 'failed') {
             setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
             setStatus('could not measure the room');
+            return;
+          }
+          if (!targetStillCurrent()) {
+            setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
+            setStatus('capture cancelled — the active scan changed while measuring');
             return;
           }
         }
@@ -95,7 +115,19 @@ export default function SwarmTab({
           geometryNote: v ? v.detail : null,
           operatorNote: notes || null,
         });
-        setState((x) => ({ swarm: { ...x.swarm, vision: res, visionBusy: false } }));
+        if (!targetStillCurrent()) {
+          setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
+          setStatus('assessment discarded — the active scan changed during capture');
+          return;
+        }
+        setState((x) => ({
+          swarm: {
+            ...x.swarm,
+            vision: res,
+            visionSource: { slot: targetSlot, revision: targetRevision },
+            visionBusy: false,
+          },
+        }));
         setStatus(res.error ? res.error : `captured in ${(res.ms / 1000).toFixed(1)}s`);
       } catch (e) {
         setState((x) => ({ swarm: { ...x.swarm, visionBusy: false } }));
@@ -146,10 +178,10 @@ export default function SwarmTab({
         </>
       )}
 
-      {room?.report && !room.report.abstain && room.report.defects.length > 0 && (
+      {verifiedReport && !verifiedReport.abstain && verifiedReport.defects.length > 0 && (
         <>
           <div className="ghead">DEFECTS</div>
-          {room.report.defects.map((d, i) => (
+          {verifiedReport.defects.map((d, i) => (
             <div className="sagent" key={i}>
               <div className="top">
                 <span className="nm">{DEFECT_LABEL[d.kind]}</span>
@@ -173,6 +205,12 @@ export default function SwarmTab({
       )}
 
       {room?.error && <div className="gnote">{room.error}</div>}
+
+      {room && !room.verified && room.report && (
+        <div className="gnote" style={{ color: 'var(--amber)' }}>
+          The visual report failed verification and was excluded from the condition.
+        </div>
+      )}
 
       {room && (
         <details className="gnote-details">

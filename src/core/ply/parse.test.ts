@@ -66,4 +66,21 @@ describe('parsePLY', () => {
     const buf = new TextEncoder().encode(header).buffer as ArrayBuffer;
     expect(() => parsePLY(buf)).toThrow(/mesh-only|element vertex/i);
   });
+
+  it('rejects a truncated binary vertex body', () => {
+    const complete = makePly([
+      [0, 0, 0, 255, 0, 0],
+      [1, 1, 1, 0, 255, 0],
+    ]);
+    const truncated = complete.slice(0, complete.byteLength - 15);
+    expect(() => parsePLY(truncated)).toThrow(/truncated binary PLY/i);
+  });
+
+  it('rejects a truncated ASCII vertex body', () => {
+    const text =
+      'ply\nformat ascii 1.0\nelement vertex 2\n' +
+      'property float x\nproperty float y\nproperty float z\nend_header\n0 0 0\n';
+    const buf = new TextEncoder().encode(text).buffer as ArrayBuffer;
+    expect(() => parsePLY(buf)).toThrow(/truncated ASCII PLY/i);
+  });
 });

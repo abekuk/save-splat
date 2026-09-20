@@ -50,8 +50,23 @@ test('resolvePath walks objects, arrays and reports misses', () => {
   assert.equal(resolvePath(payload, 'geometry.planes[9].cls').found, false);
   assert.equal(resolvePath(payload, 'geometry.nope').found, false);
   assert.equal(resolvePath(payload, 'site.n.deeper').found, false);
+  assert.equal(resolvePath(payload, '.').found, false);
+  assert.equal(resolvePath(payload, 'constructor').found, false);
+  assert.equal(resolvePath(payload, 'toString').found, false);
   // a null value still counts as present — absent and null are different failures
   assert.equal(resolvePath(payload, 'operator_notes').found, true);
+});
+
+test('citation check rejects empty and inherited-property paths', () => {
+  for (const path of ['.', 'constructor', 'toString']) {
+    const v = verify({
+      key: 'morphology',
+      param: 'type',
+      proposal: prop({ evidence_used: [path] }),
+      payload,
+    });
+    assert.equal(v.find((x) => x.check === 'citations')!.status, 'fail');
+  }
 });
 
 test('citation check rejects paths that are not in the payload', () => {

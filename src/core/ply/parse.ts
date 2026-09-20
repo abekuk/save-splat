@@ -164,9 +164,12 @@ export function parsePLY(buffer: ArrayBuffer): PlyResult {
         q2r = hasCov ? reader('rot_2') : null, q3r = hasCov ? reader('rot_3') : null;
     var base0 = he.dataStart;
 
+    if (base0 + count * stride > buffer.byteLength)
+      throw new Error('truncated binary PLY — header declares ' + fmtInt(count) +
+                      ' vertices but the file ends early');
+
     for (var v = 0; v < count; v += step){
       var base = base0 + v * stride;
-      if (base + stride > buffer.byteLength) break;         // bounds check inside the read loop
       var al = 1;
       if (hasOp){
         al = 1 / (1 + Math.exp(-ro!(base)));                 // opacity is stored pre-sigmoid
@@ -220,6 +223,9 @@ export function parsePLY(buffer: ArrayBuffer): PlyResult {
         parseFloat(tk[map.rot_2.order]), parseFloat(tk[map.rot_3.order]));
       emit(parseFloat(tk[ix]), parseFloat(tk[iy]), parseFloat(tk[iz]), ar, ag, ab, aal);
     }
+    if (seen < count)
+      throw new Error('truncated ASCII PLY — header declares ' + fmtInt(count) +
+                      ' vertices but only ' + fmtInt(seen) + ' rows were present');
   }
 
   if (w === 0)

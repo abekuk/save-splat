@@ -321,6 +321,7 @@ function parseRawProposal(param, raw) {
 }
 function resolvePath(root, path) {
   const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".").filter(Boolean);
+  if (parts.length === 0) return { found: false, value: void 0 };
   let cur = root;
   for (const part of parts) {
     if (cur === null || cur === void 0) return { found: false, value: void 0 };
@@ -332,7 +333,8 @@ function resolvePath(root, path) {
       continue;
     }
     if (typeof cur !== "object") return { found: false, value: void 0 };
-    if (!(part in cur)) return { found: false, value: void 0 };
+    if (!Object.prototype.hasOwnProperty.call(cur, part))
+      return { found: false, value: void 0 };
     cur = cur[part];
   }
   return { found: true, value: cur };
