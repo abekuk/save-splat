@@ -1,25 +1,23 @@
 # 🛰️ save-splat
 
-*One scan. Every measurement. Zero guesswork about who to reach first.*
-
-**save-splat** is an _engineer-in-the-loop_, AI-assisted **post-disaster triage viewer** built for the people standing in front of a collapsed building. It loads a Scaniverse/Polycam gaussian-splat `.ply`, extracts measurable structural facts from it — wall verticality, slab and lean-to angles, debris volume — and ranks assessment sites by **expected lives saved per crew-hour**. For urban search-and-rescue (USAR) crews it turns "that wall looks bad" into a drift number you can act on; for incident command it replaces gut-feel triage with a defensible, logged, reproducible prior. It reads the rubble so the crew can decide where to dig — and it never pretends to be the one making the call.
+An AI tool for rescue teams that takes LiDAR gaussian splat scans of collapsed buildings, measures structural damage like wall lean and debris volume, and weighs how many people might be trapped alive to rank which sites to reach first.
 
 ## Demo Images
 
-<img width="600" height="300" alt="Screenshot 2026-09-20 142806" src="https://github.com/user-attachments/assets/81ec4f73-fd1b-483c-8a8c-8a2d6dcc0ac2" />
-<img width="600" height="300" alt="Screenshot 2026-09-20 142625" src="https://github.com/user-attachments/assets/6d226392-1c9d-4f8b-ba9f-670fd3e8e1ec" />
-<img width="600" height="300" alt="Screenshot 2026-09-20 142708" src="https://github.com/user-attachments/assets/983b2136-499f-4346-9ea6-fc52dc83d0fd" />
-<img width="600" height="300" alt="Screenshot 2026-09-20 142741" src="https://github.com/user-attachments/assets/f8aa2c1c-aac5-4a88-a4f8-113fcb144044" />
+<div style="display: flex; flex-wrap: wrap; gap: 10;">
+  <img src="https://github.com/user-attachments/assets/81ec4f73-fd1b-483c-8a8c-8a2d6dcc0ac2" width="48%" />
+  <img src="https://github.com/user-attachments/assets/6d226392-1c9d-4f8b-ba9f-670fd3e8e1ec" width="48%" />
+  <img src="https://github.com/user-attachments/assets/983b2136-499f-4346-9ea6-fc52dc83d0fd" width="48%" />
+  <img src="https://github.com/user-attachments/assets/f8aa2c1c-aac5-4a88-a4f8-113fcb144044" width="48%" />
+</div>
 
-## What it Does
+## What it does
 
-USAR teams juggle disconnected tools that don't remember anything: a handheld scanner here, a paper recon form there, a structural engineer's eyeball, a whiteboard with site names and arrows. None of them turn a scan into a number you can *argue about* — and after an earthquake, the order you visit sites in is, bluntly, who lives.
+After an earthquake, a search-and-rescue team can face dozens of collapsed buildings and only a handful of crews. The order they work the sites in decides who lives. Right now that call is usually made by looking at a leaning wall, guessing, and writing site names on a whiteboard. None of the tools involved talk to each other, and none of them turn a scan into a number you can actually compare.
 
-There's a second problem nobody says out loud: **"that wall looks bad" is not a measurement.** Is it a 1% drift or a 6% drift about to pancake onto the crew? Without a number you can't rank, you can't hand off, and you can't defend the decision afterward.
+save-splat takes a phone scan of a collapsed structure and pulls real measurements out of it: how far each wall leans, how the slabs and floors are angled, and how much debris is piled up. It then ranks the sites so command can see where a crew buys the most lives per hour. It measures the damage and lays out the priority. A person still makes every decision.
 
-**For the crew:** Drop in a gaussian-splat `.ply` and save-splat extracts the structural facts — walls, slabs, inclines, wall drift in severity bands, debris volume above a detected ground plane — and lights up a ranked dispatch list. It handles the geometry so the engineer can focus on judgment.
-
-**For incident command:** A ranked prior with every input visible and every override logged. Not a black box. Not an autopilot. A number you can question.
+You load a Scaniverse or Polycam gaussian-splat `.ply` (a `.glb` or `.gltf` mesh works too), and the app fits planes to the walls and floors, reads the lean off each wall as a drift number, finds the ground and measures debris volume above it, and lets you place sites and rank them. There is no autopilot here. The output is a ranked list for a human to review, not a dispatch order.
 
 ## Architecture
 
@@ -50,29 +48,29 @@ There's a second problem nobody says out loud: **"that wall looks bad" is not a 
 
 </div>
 
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **Frontend** | Vite, React 18, TypeScript | Panel UI + scene, single-page workspace |
-| **State** | `useSyncExternalStore` store | Sites live in state; their meshes live in the viewer, keyed by id |
-| **Renderer** | Three.js | Camera, hand-written orbit, markers, plane/drift overlay — splats render as `THREE.Points` |
-| **Core logic** | Pure TypeScript (no three.js, no DOM) | Parsing, RANSAC, ranking, export — unit-testable without a browser |
-| **Parsing** | Custom `.ply` + gaussian-splat reader | Per-Gaussian covariance from `scale_*`/`rot_*`, SH `f_dc_*` colour, streaming with progress |
-| **Geometry** | Opacity-weighted RANSAC (seeded mulberry32) | Planes, wall drift bands, column-method debris volume |
-| **Validation** | Zod (`core/swarm/schema.ts`) | The boundary — anything from outside is rejected, not clamped |
-| **Reasoner** | Node-only `server/swarm/` | Prompts → provider call → Zod gate → verifiers |
-| **Providers** | OpenRouter · OpenAI · Anthropic · Athena | One `Reasoner` interface; whichever key is present wins; model resolved from the account |
-| **Hosting** | Vercel functions + Vite dev/preview | Same `/api/swarm/*` handlers mount in all three |
-| **Run log** | Supabase Postgres pooler (optional) | Append-only `swarm_runs`; a write failure warns, never blocks a run |
+| Layer | Technology | What it handles |
+|-------|------------|-----------------|
+| Frontend | Vite, React 18, TypeScript | The panel UI and the 3D scene, all in one page |
+| State | `useSyncExternalStore` store | Site records live here; their 3D markers live in the viewer, keyed by id |
+| Renderer | Three.js | Camera, a hand-written orbit control, site markers, and the plane overlay. Splats draw as `THREE.Points` |
+| Core logic | Plain TypeScript, no Three.js and no DOM | Parsing, RANSAC, ranking, and export. Runs and gets tested without a browser |
+| Parsing | Custom `.ply` and gaussian-splat reader | Reads per-Gaussian covariance from `scale_*` and `rot_*`, colour from `f_dc_*`, with streaming progress |
+| Geometry | Opacity-weighted RANSAC, seeded (mulberry32) | Fits planes, reads wall drift bands, and measures debris volume |
+| Validation | Zod (`core/swarm/schema.ts`) | The gate for anything coming from outside. Bad values are rejected, not clamped |
+| Reasoner | Node-only `server/swarm/` | Prompt, call the provider, run it through Zod, then verify |
+| Providers | OpenRouter, OpenAI, Anthropic, Athena | One `Reasoner` interface. Whichever key is set gets used; the model comes from the account |
+| Hosting | Vercel functions, plus Vite dev and preview | The same `/api/swarm/*` handlers run in all three |
+| Run log | Supabase Postgres pooler (optional) | Appends each run to `swarm_runs`. A failed write logs a warning and never blocks a run |
 
-> **The split that matters:** `core/` knows nothing about three.js or the DOM. `buildWorkingSet` takes vertex data and a world matrix rather than a `THREE.Points`, so the geometry pass can be run and checked without a renderer.
+The one rule worth knowing: `core/` never imports Three.js or touches the DOM. The geometry functions take plain arrays and a matrix instead of a `THREE.Points` object, so the measurement code can be unit-tested without a renderer.
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
-- **Node.js 20+**
-- **npm**
-- *(optional)* the **Stripe Projects CLI** — provisions the reasoner and run-log credentials
+- Node.js 20 or newer
+- npm
+- The Stripe Projects CLI, if you want it to provision the reasoner and run-log credentials for you (optional)
 
 ### 1. Clone and install
 
@@ -88,11 +86,11 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-The synthetic scene loads on open, so this works with no further setup. Click **View demo** (or open `#viewer`) to skip the landing page.
+The synthetic scene loads on open, so this works with nothing else set up. Click "View demo" or open `#viewer` to go straight to the viewer.
 
-### 3. (Optional) Enable the agent swarm
+### 3. Turn on the agent swarm (optional)
 
-The reasoner needs **one key**, server-side, in `.env.local` (see [`.env.example`](.env.example)). The easiest path provisions everything at once:
+The reasoner needs one key, set server-side in `.env.local`. See [`.env.example`](.env.example). The quickest path pulls everything at once:
 
 ```bash
 stripe projects env --pull        # writes .env.local with the real values
@@ -101,45 +99,30 @@ stripe projects env --pull        # writes .env.local with the real values
 Or add a single key by hand:
 
 ```env
-# any ONE of these is enough — OpenRouter is what Stripe Projects provisions
+# any one of these is enough. OpenRouter is what Stripe Projects provisions.
 OPENROUTER_API_KEY=your_key
 # OPENAI_API_KEY=your_key
 # ANTHROPIC_API_KEY=your_key
 
 # optional tuning
-# SWARM_PROVIDER=openrouter                 # pin when more than one key is present
-# SWARM_MODEL=anthropic/claude-opus-5       # skip catalogue lookup
+# SWARM_PROVIDER=openrouter                 # pin this when more than one key is set
+# SWARM_MODEL=anthropic/claude-opus-5       # skip the catalogue lookup
 
-# optional append-only run log (server-side Postgres connection string)
+# optional run log (a server-side Postgres connection string)
 # SUPABASE_POOLER_URL=...
 # SUPABASE_DB_PASS=...
 ```
 
-> **No `VITE_` prefix on any secret.** Vite inlines `VITE_*` into the client bundle; reasoner keys are read only in `server/swarm/` from `process.env`. The browser talks to `/api/swarm/*` only.
+Keep the `VITE_` prefix off every secret. Vite inlines any `VITE_*` variable into the client bundle, so reasoner keys are read only inside `server/swarm/` from `process.env`. The browser only ever calls `/api/swarm/*`.
 
-`/api/swarm/status` reports what is configured, and the **RUN SWARM** button says why it is disabled when nothing is. **Athena** is an additional Stripe-provisioned agent used as both a reasoner and an incident reviewer; it is checked first when its key and MCP URL are present.
+`/api/swarm/status` reports what is configured, and the RUN SWARM button explains why it is disabled when nothing is set. Athena is an extra agent that Stripe Projects can provision. It works as both a reasoner and an incident reviewer, and it gets picked first when its key and MCP URL are present.
 
 ### Scripts
 
 ```bash
 npm run dev          # vite dev server
-npm run check        # typecheck + lint + test — the gate; run before you claim done
-npm run test         # vitest (core is testable without a browser)
-npm run build        # tsc -b && vite build  ->  dist/
-npm run preview      # serve the production build (the on-stage fallback)
+npm run check        # typecheck, lint, and test. Run this before you call something done
+npm run test         # vitest. The core is testable without a browser
+npm run build        # tsc -b && vite build, output in dist/
+npm run preview      # serve the production build
 ```
-
-## What this is *not*
-
-- **Not a true gaussian rasterizer** — the splat renders as `THREE.Points` with vertex colours.
-- **Not a mesh.** Planes, angles and volumes are the deliverable; a surface hides the residual an assessor needs to see.
-- **A/B scan slots are a visual toggle** — no alignment, registration or change detection.
-- **The agent swarm is assisted assessment, not autonomy.** Five agents (one per ranking parameter, each with its own evidence source and a deterministic verifier) run server-side against the extracted geometry and return proposals validated by Zod — *rejected* rather than clamped, because silently turning `n = 500` into `50` launders a reasoning failure into the ranking. A proposal is inert until an operator applies it, and every application is logged with the value it replaced. `q` (P trapped alive) has no agent on purpose.
-- **Output is a ranked prior for incident command review, not an autonomous dispatch order.**
-
-## Documentation
-
-- **[AGENTS.md](AGENTS.md)** — conventions, the `core/` purity rule, which files are verbatim ports, and the domain invariants that must not be "fixed". Read it before changing anything.
-- **[PROJECT-BRIEF.md](PROJECT-BRIEF.md)** — the project mapped against the Sendai Framework for Disaster Risk Reduction 2015–2030 and the SDG targets, with limits stated in full.
-- **[SETUP.md](SETUP.md)** — the verified login flow, provisioning order, and deploy steps via the Stripe Projects CLI.
-- **[DEVPOST.md](DEVPOST.md)** — the submission writeup: pipeline diagram, ranking index, and the agent/verifier design.
